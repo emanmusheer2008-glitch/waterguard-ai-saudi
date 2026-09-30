@@ -1,0 +1,5 @@
+{
+  "retrain_max_abs_prob_diff_vs_saved": 2.220446049250313e-16,
+  "train_only_80th_percentile_total_leak": 37.56,
+  "note": "V2 remains the primary model; none of these experiments replace it."
+}

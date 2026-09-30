@@ -1,0 +1,80 @@
+{
+  "scada_validation": {
+    "pressures": {
+      "rows": 105120,
+      "sensors": 33,
+      "duplicates": 0,
+      "missing_values": 0,
+      "irregular_steps": 0,
+      "aligned_with_pressures": true
+    },
+    "demands": {
+      "rows": 105120,
+      "sensors": 82,
+      "duplicates": 0,
+      "missing_values": 0,
+      "irregular_steps": 0,
+      "aligned_with_pressures": true
+    },
+    "flows": {
+      "rows": 105120,
+      "sensors": 3,
+      "duplicates": 0,
+      "missing_values": 0,
+      "irregular_steps": 0,
+      "aligned_with_pressures": true
+    },
+    "levels": {
+      "rows": 105120,
+      "sensors": 1,
+      "duplicates": 0,
+      "missing_values": 0,
+      "irregular_steps": 0,
+      "aligned_with_pressures": true
+    }
+  },
+  "leakage_rows": 105120,
+  "leakage_missing_values": 0,
+  "leakage_duplicate_timestamps": 0,
+  "leakage_timestamps_match_scada": true,
+  "share_any_positive_leak": 0.9780251141552512,
+  "share_total_leak_ge_threshold_full_year": 0.19980974124809742,
+  "percentile_of_threshold_full_year": 0.8001902587519026,
+  "train_only_80th_percentile_total_leak": 37.56,
+  "full_year_80th_percentile_total_leak": 39.548000000000464,
+  "splits": {
+    "train": {
+      "start": "2018-01-01 00:00:00",
+      "end": "2018-08-07 23:55:00",
+      "rows": 63072,
+      "severe_rate": 0.1688070776255708
+    },
+    "validation": {
+      "start": "2018-08-08 00:00:00",
+      "end": "2018-09-13 11:55:00",
+      "rows": 10512,
+      "severe_rate": 0.1296613394216134
+    },
+    "test": {
+      "start": "2018-09-13 12:00:00",
+      "end": "2018-12-31 23:55:00",
+      "rows": 31536,
+      "severe_rate": 0.2851978691019787
+    }
+  },
+  "alert_threshold_stored": 0.22000000000000003,
+  "reproduction_max_abs_prob_diff": 2.220446049250313e-16,
+  "reproduction_timestamps_equal": true,
+  "reproduction_target_equal": true,
+  "verified_test_metrics": {
+    "tn": 22332,
+    "fp": 210,
+    "fn": 5561,
+    "tp": 3433,
+    "precision": 0.9423552017567939,
+    "recall": 0.3816989103847009,
+    "f1": 0.5433251562870934,
+    "roc_auc": 0.950089277669256,
+    "pr_auc": 0.8806029967862764
+  }
+}

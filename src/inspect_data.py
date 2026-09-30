@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 import pandas as pd
 
 DATA = Path("data")
@@ -33,7 +33,9 @@ for sheet in xls.sheet_names:
     print(df.to_string(index=False))
 
 print("\n[4] LEAKAGE FILE")
-leaks = pd.read_csv(leak_path)
+# Fixed: the file uses ";" separators and "," decimals (was read with defaults,
+# which produced a single text column).
+leaks = pd.read_csv(leak_path, sep=";", decimal=",", parse_dates=["Timestamp"])
 
 print("Shape:", leaks.shape)
 print("Columns:", list(leaks.columns))

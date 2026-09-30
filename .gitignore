@@ -1,13 +1,28 @@
+# Environments
 .venv/
 venv/
+env/
+
+# Python caches
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ipynb_checkpoints/
+
+# Raw BattLeDIM data (CC BY 4.0, ~98 MB) - download with scripts/download_data.py
 data/*.xlsx
 data/*.csv
 data/cache/
+
+# Trained model binaries (~25 MB each) - regenerate with src/train_v1.py / src/train_v2.py
 models/*.joblib
+
+# OS / editor / secrets
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
 .env
 .streamlit/secrets.toml
-desktop.ini
-Thumbs.db
+*.log
