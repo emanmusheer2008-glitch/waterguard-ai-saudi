@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+data/*.xlsx
+data/*.csv
+data/cache/
+models/*.joblib
+.env
+.streamlit/secrets.toml
+desktop.ini
+Thumbs.db
