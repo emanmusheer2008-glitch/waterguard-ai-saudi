@@ -19,6 +19,20 @@ def test_dashboard_data_loads():
     assert (d["pred"]["Timestamp"].values == d["ctx"]["Timestamp"].values).all()
 
 
+def test_permutation_importance_output():
+    p = pd.read_csv(OUTPUTS_DIR / "permutation_importance_v2.csv")
+    assert len(p) == 60 and p["feature"].is_unique
+    assert {"validation_auc_drop_mean", "test_auc_drop_mean", "mdi_importance"} <= set(p.columns)
+
+
+def test_pressure_deviation_output_aligned_with_predictions():
+    d = load_all()
+    assert len(d["pdev"]) == len(d["pred"])
+    assert (d["pdev"]["Timestamp"].values == d["pred"]["Timestamp"].values).all()
+    assert d["pdev"].shape[1] == 34 and np.isfinite(d["pdev"].drop(columns="Timestamp").to_numpy()).all()
+    assert set(d["pdev"].columns[1:]) == set(d["sensors"]["id"])
+
+
 def test_v2_verified_results_unchanged():
     p = pd.read_csv(OUTPUTS_DIR / "predictions_v2.csv")
     m = point_metrics(p["target"], p["prediction"], p["risk_probability"])

@@ -18,7 +18,8 @@ def load_leakages(path: Path | str = LEAKAGE_FILE) -> pd.DataFrame:
     """Load the leakage ground truth.
 
     The file uses ';' as column separator and ',' as decimal separator.
-    Reading it with pandas defaults silently produces one text column.
+    With pandas defaults the header is read as ONE column and the read fails
+    with a ParserError at line 2312, the first row containing a decimal comma.
     """
     df = pd.read_csv(path, sep=";", decimal=",", parse_dates=["Timestamp"])
     return df

@@ -3,7 +3,7 @@ outputs/predictions_v2.csv, and export small files the dashboard needs.
 
 Does NOT retrain or change V2. Outputs:
   outputs/audit_report.json            data-integrity + split facts
-  outputs/dashboard_context_v2.csv     per-timestamp signal values + local sensitivity (test period)
+  outputs/dashboard_context_v2.csv.gz  per-timestamp signal values + local sensitivity (test period)
   outputs/typical_conditions_v2.csv    training-period reference statistics
   outputs/curves_v2.csv                ROC and precision-recall curve points (test)
   outputs/event_summary_v2.csv         episode-level detection analysis (test)
@@ -20,7 +20,8 @@ from waterguard.config import MODELS_DIR, OUTPUTS_DIR, SEVERE_THRESHOLD
 from waterguard.evaluation import event_level_summary, point_metrics
 from waterguard.target import chronological_split
 
-N_EXPLAIN = 12
+N_EXPLAIN = 12  # top signals by global (impurity) importance
+N_PERM = 8      # + top signals by validation permutation importance
 
 df, feats, leaks, report = load_v2_dataset()
 train, val, test = chronological_split(df)
@@ -70,6 +71,12 @@ audit = {
 # ---------------- typical conditions (training, non-severe only)
 imp = pd.read_csv(OUTPUTS_DIR / "feature_importance_v2.csv")
 top = imp["feature"].head(N_EXPLAIN).tolist()
+# Also explain the signals that matter most on HELD-OUT data (validation permutation importance,
+# from scripts/build_inspection_data.py). Validation, not test, so the test period stays out of every choice.
+perm_file = OUTPUTS_DIR / "permutation_importance_v2.csv"
+if perm_file.exists():
+    perm = pd.read_csv(perm_file).sort_values("validation_auc_drop_mean", ascending=False)
+    top = list(dict.fromkeys(top + perm["feature"].head(N_PERM).tolist()))
 context_cols = list(dict.fromkeys(top + ["pressure_mean", "flow_total", "demand_total", "tank_level"]))
 normal = train[train["target"] == 0]
 typical = pd.DataFrame({
@@ -93,7 +100,7 @@ for f in top:
     ctx[f"sens_{f}"] = prob - p_mod  # >0: this signal's current value pushes risk up
 num = ctx.columns.drop("Timestamp")
 ctx[num] = ctx[num].round(5)
-ctx.to_csv(OUTPUTS_DIR / "dashboard_context_v2.csv", index=False)
+ctx.to_csv(OUTPUTS_DIR / "dashboard_context_v2.csv.gz", index=False, compression="gzip")
 
 # ---------------- curves
 fpr, tpr, roc_t = roc_curve(saved["target"], saved["risk_probability"])

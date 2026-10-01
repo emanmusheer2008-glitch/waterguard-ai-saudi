@@ -1,0 +1,3 @@
+top_sensor,top_sensor_distance,nearest_sensor,nearest_sensor_distance,nearest_sensor_rank,n_sensors,top5,episode_start,episode_end,leaking_pipe,mean_leak_m3h
+n644,60.78895006495822,n644,60.78895006495822,1,33,"n644, n288, n752, n679, n769",2018-10-06 02:35:00,2018-10-23 13:35:00,p158,24.44
+n410,223.25243559701659,n429,72.2538884766764,2,33,"n410, n429, n288, n752, n769",2018-10-26 02:05:00,2018-11-08 20:25:00,p369,20.58

@@ -8,6 +8,7 @@ OUTPUTS_DIR = ROOT / "outputs"
 
 SCADA_FILE = DATA_DIR / "2018_SCADA.xlsx"
 LEAKAGE_FILE = DATA_DIR / "2018_Leakages.csv"
+NETWORK_FILE = DATA_DIR / "L-TOWN.inp"
 
 SCADA_SHEETS = {
     "pressures": "Pressures (m)",
@@ -18,8 +19,8 @@ SCADA_SHEETS = {
 
 # Experimental benchmark severity threshold (NOT an official engineering,
 # utility, regulatory or Saudi threshold). Total leakage across the 14
-# BattLeDIM leak locations at a 5-minute timestamp. Units follow the
-# 2018_Leakages.csv file.
+# BattLeDIM leak locations at a 5-minute timestamp, in m3/h (unit stated in
+# the BattLeDIM README on Zenodo).
 SEVERE_THRESHOLD = 40.0
 
 # Chronological split fractions used by V2 (60 / 10 / 30).

@@ -140,11 +140,30 @@ def fmt_ts(t):
     return pd.Timestamp(t).strftime("%d %b %Y %H:%M")
 
 
+def pick_observation(key: str):
+    """Shared selector: one of the highest-risk alerts, or any test timestamp."""
+    mode = st.segmented_control("Choose observation", ["Highest-risk alerts", "Any timestamp"],
+                                default="Highest-risk alerts", key=f"{key}_mode")
+    if mode == "Any timestamp":
+        c1, c2 = st.columns(2)
+        d = c1.date_input("Date", value=pd.Timestamp("2018-10-10").date(), min_value=TEST_START.date(),
+                          max_value=TEST_END.date(), key=f"{key}_date")
+        times = pd.date_range("00:00", "23:55", freq="5min").strftime("%H:%M").tolist()
+        t = c2.selectbox("Time", times, index=times.index("12:00"), key=f"{key}_time")
+        return pd.Timestamp(f"{d} {t}")
+    risk = pred.set_index("Timestamp")["risk_probability"]
+    opts = pred.nlargest(50, "risk_probability")["Timestamp"].tolist()
+    return st.selectbox("Alert", opts, format_func=lambda x: f"{fmt_ts(x)} — risk {risk[x]:.2f}", key=f"{key}_alert")
+
+
 # ================================================================== PAGES
 def page_overview():
-    hero("WaterGuard AI Saudi",
-         "Machine-learning decision support for spotting network conditions associated with elevated water loss, "
-         "from hydraulic SCADA signals. Evaluated on the international BattLeDIM L-Town benchmark — not Saudi utility data.")
+    hero("WaterGuard AI Saudi — Network Overview",
+         "A Saudi-motivated machine-learning prototype that flags severe water-loss periods from hydraulic SCADA signals. "
+         "Evaluated on the international BattLeDIM L-Town benchmark — not Saudi utility data.")
+    note(f"<b>What is a \"severe-loss period\"?</b> A 5-minute step in which the benchmark's total leakage across all 14 "
+         f"simulated leaks is <b>≥ {SEVERE_THRESHOLD:.0f} m³/h</b>. This is an <b>experimental threshold</b> chosen for this "
+         f"prototype (about the 80th percentile of 2018 leakage) — not an engineering, utility, regulatory or Saudi standard.")
 
     cards([
         ("ROC-AUC", f"{M['roc_auc']:.3f}", "ranking quality on unseen test period", "accent"),
@@ -152,9 +171,13 @@ def page_overview():
         ("Recall", f"{M['recall']:.1%}", "share of severe 5-min steps alerted", "warn"),
         ("Alert threshold", f"{V2_ALERT_THRESHOLD:.2f}", "chosen on validation data only", "accent"),
     ])
+    note(f"<b>Read the two key numbers together.</b> Precision {M['precision']:.0%} means that when WaterGuard raises an "
+         f"alert it is usually right. It does <b>not</b> mean {M['precision']:.0%} of severe periods are caught: recall is "
+         f"{M['recall']:.0%}, so most severe 5-minute steps were missed. That is why this is decision support, not an "
+         f"autonomous leak detector.", "gt")
     cards([
         ("Test observations", f"{len(pred):,}", f"5-min steps · {TEST_START:%d %b} – {TEST_END:%d %b %Y}", ""),
-        ("Severe observations", f"{int(pred['target'].sum()):,}", f"total leakage ≥ {SEVERE_THRESHOLD:.0f} (experimental)", ""),
+        ("Severe observations", f"{int(pred['target'].sum()):,}", f"total leakage ≥ {SEVERE_THRESHOLD:.0f} m³/h (experimental)", ""),
         ("Detected severe", f"{M['tp']:,}", "true positives", ""),
         ("False alerts", f"{M['fp']:,}", f"of {M['tp'] + M['fp']:,} alerts raised", ""),
     ])
@@ -234,7 +257,7 @@ def page_monitor():
         "Timestamp": top["Timestamp"].dt.strftime("%Y-%m-%d %H:%M"),
         "Risk probability": top["risk_probability"].round(3),
         "Model status": np.where(top["alert"] == 1, "ALERT", "Normal"),
-        "Ground truth: total leakage": top["total_leak"].round(2),
+        "Ground truth: total leakage (m³/h)": top["total_leak"].round(2),
         "Ground truth: severe?": np.where(top["target"] == 1, "Yes", "No"),
     })
     st.dataframe(table, width="stretch", hide_index=True, height=360, column_config={
@@ -251,16 +274,7 @@ def page_monitor():
 
 def page_explain():
     hero("Alert Explainer", "Why did the model flag this moment? A descriptive look at one observation's signals.")
-    mode = st.segmented_control("Choose observation", ["Highest-risk alerts", "Any timestamp"], default="Highest-risk alerts")
-    if mode == "Any timestamp":
-        c1, c2 = st.columns(2)
-        d = c1.date_input("Date", value=pd.Timestamp("2018-10-10").date(), min_value=TEST_START.date(), max_value=TEST_END.date())
-        times = pd.date_range("00:00", "23:55", freq="5min").strftime("%H:%M").tolist()
-        t = c2.selectbox("Time", times, index=times.index("12:00"))
-        ts = pd.Timestamp(f"{d} {t}")
-    else:
-        opts = pred.nlargest(50, "risk_probability")["Timestamp"].tolist()
-        ts = st.selectbox("Alert", opts, format_func=lambda x: f"{fmt_ts(x)} — risk {pred.loc[pred.Timestamp == x, 'risk_probability'].iloc[0]:.2f}")
+    ts = pick_observation("explain")
     row = ctx[ctx["Timestamp"] == ts]
     prow = pred[pred["Timestamp"] == ts]
     if row.empty or prow.empty:
@@ -269,10 +283,10 @@ def page_explain():
     row, prow = row.iloc[0], prow.iloc[0]
     alert = prow["risk_probability"] >= V2_ALERT_THRESHOLD
     cards([
-        ("Observation", fmt_ts(ts), "5-minute SCADA snapshot", ""),
+        ("Observation", f"{ts:%d %b %Y}", f"{ts:%H:%M} · 5-minute SCADA snapshot", ""),
         ("Risk probability", f"{prow['risk_probability']:.3f}", f"threshold {V2_ALERT_THRESHOLD:.2f}", "warn" if alert else "good"),
         ("Model status", "ALERT" if alert else "Normal", "model output", "warn" if alert else "good"),
-        ("Ground truth", "Severe" if prow["target"] else "Not severe", f"total leakage {prow['total_leak']:.1f} · evaluation only", ""),
+        ("Ground truth", "Severe" if prow["target"] else "Not severe", f"total leakage {prow['total_leak']:.1f} m³/h · evaluation only", ""),
     ])
 
     typ = D["typical"].set_index("feature")
@@ -304,7 +318,8 @@ def page_explain():
     with right:
         section("How to read this")
         st.markdown(
-            f"- For each of the model's 12 globally most important signals, we replace **only that signal** with its "
+            f"- For each of {len(feats)} key signals (the 12 with the highest global importance, together with the 8 that "
+            f"matter most on held-out validation data; the two lists overlap), we replace **only that signal** with its "
             f"typical value (median of *non-severe training* periods) and re-score.\n"
             f"- **Red bars**: the current value of that signal pushes risk *up* relative to typical; **teal**: pushes it down.\n"
             f"- Signals interact inside a Random Forest, so bars need not add up to the total.\n"
@@ -319,6 +334,114 @@ def page_explain():
     })
 
 
+def network_figure(values: pd.Series | None = None, highlight: list[str] | None = None, leak_xy=None, height=560):
+    """L-Town map: links in grey, pressure sensors coloured by deviation (negative = lower than usual)."""
+    links, sens = D["links"], D["sensors"].set_index("id")
+    xs = np.column_stack([links["x0"], links["x1"], np.full(len(links), np.nan)]).ravel()
+    ys = np.column_stack([links["y0"], links["y1"], np.full(len(links), np.nan)]).ravel()
+    fig = go.Figure(go.Scattergl(x=xs, y=ys, mode="lines", line=dict(color="#C9D2DD", width=1), hoverinfo="skip",
+                                 name="Pipes"))
+    if values is not None:
+        v = values.reindex(sens.index)
+        fig.add_trace(go.Scatter(
+            x=sens["x"], y=sens["y"], mode="markers", name="Pressure sensors", customdata=np.c_[sens.index, v],
+            marker=dict(size=9 + np.clip(-v.to_numpy(), 0, 6) * 3, color=v, cmin=-4, cmax=4, line=dict(width=1, color="#fff"),
+                        colorscale=[[0, C["alert"]], [0.5, "#E9EDF2"], [1, C["blue"]]],
+                        colorbar=dict(title=dict(text="Deviation (σ)", side="right"), thickness=10, len=0.7)),
+            hovertemplate="%{customdata[0]}<br>deviation %{customdata[1]:+.2f} σ<extra></extra>"))
+    if highlight:
+        h = sens.loc[highlight]
+        fig.add_trace(go.Scatter(x=h["x"], y=h["y"], mode="text", text=[f"<b>{i}</b>" for i in h.index],
+                                 textposition="top center", textfont=dict(color=C["ink"], size=12), hoverinfo="skip",
+                                 showlegend=False))
+    if leak_xy is not None:
+        fig.add_trace(go.Scatter(x=[leak_xy[0]], y=[leak_xy[1]], mode="markers+text", text=["true leak (evaluation only)"],
+                                 textposition="bottom center", textfont=dict(color=C["amber"]),
+                                 marker=dict(symbol="star", size=20, color=C["amber"], line=dict(color="#5A4410", width=1)),
+                                 name="Benchmark leak location (ground truth)", hoverinfo="skip"))
+    style(fig, height, legend=False)
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False, scaleanchor="x", scaleratio=1)
+    fig.update_layout(hovermode="closest")
+    return fig
+
+
+def page_inspect():
+    hero("Inspection Guidance",
+         "Where could an operator start looking? Pressure sensors that are furthest below their usual level for the time of day.")
+    note("This view is <b>inspection guidance, not leak localisation</b>. The Random Forest only says <i>when</i> conditions "
+         "look severe. Here, separately, each of the 33 pressure sensors is compared with its usual value at the same time of "
+         "day (median of non-severe <b>training</b> periods). A leak lets water escape, so pressure near it tends to fall, which "
+         "makes the most-depressed sensors a reasonable starting point. Sensor IDs are L-Town benchmark nodes, not real places.")
+    ts = pick_observation("inspect")
+    pdev = D["pdev"]
+    row = pdev[pdev["Timestamp"] == ts]
+    prow = pred[pred["Timestamp"] == ts]
+    if row.empty or prow.empty:
+        st.warning("Timestamp outside the test period.")
+        return
+    v = row.drop(columns="Timestamp").iloc[0].astype(float)
+    prow = prow.iloc[0]
+    alert = prow["risk_probability"] >= V2_ALERT_THRESHOLD
+    order = v.sort_values()
+    top = order.head(5).index.tolist()
+    cards([
+        ("Observation", f"{ts:%d %b %Y}", f"{ts:%H:%M} · 5-minute SCADA snapshot", ""),
+        ("Model status", "ALERT" if alert else "Normal", f"risk {prow['risk_probability']:.3f} · threshold {V2_ALERT_THRESHOLD:.2f}",
+         "warn" if alert else "good"),
+        ('Sensors below <span style="text-transform:none">−2σ</span>', f"{int((v < -2).sum())} of {len(v)}",
+         "time-of-day adjusted", ""),
+        ("Start inspection near", top[0], f"deviation {order.iloc[0]:+.1f} σ", "accent"),
+    ])
+    if not alert:
+        note("The model did not raise an alert at this time. Deviations are still shown, but they are not tied to an alert.", "gt")
+
+    chk = D["inspect_check"]
+    ep = chk[(chk["episode_start"] <= ts) & (chk["episode_end"] >= ts)]
+    show_truth = st.toggle("Show the benchmark's true leak location (evaluation only)", value=False,
+                           disabled=ep.empty, help="Available when the timestamp falls inside a severe test episode.")
+    leak_xy = None
+    if show_truth and not ep.empty:
+        L = D["links"].set_index("id")
+        leak_xy = tuple(L.loc[ep["leaking_pipe"].iloc[0], ["xm", "ym"]])
+
+    left, right = st.columns([1.6, 1])
+    with left:
+        section("L-Town network — pressure sensors coloured by deviation")
+        show(network_figure(v, highlight=top, leak_xy=leak_xy, height=470))
+        st.caption("Red = lower than usual for this time of day; blue = higher. Larger markers = larger drops. During a "
+                   "large leak pressure often falls across much of the network, so the useful signal is the ranking: "
+                   "which sensors fall the most. "
+                   "Map drawn from the benchmark's EPANET model (L-TOWN.inp, CC BY 4.0).")
+    with right:
+        section("Suggested inspection order")
+        perm_rank = {f.removeprefix("P_"): i + 1 for i, f in
+                     enumerate(D["perm"].sort_values("test_auc_drop_mean", ascending=False)["feature"])}
+        st.dataframe(pd.DataFrame({
+            "Rank": range(1, 9), "Pressure sensor": order.index[:8],
+            "Deviation (σ)": order.values[:8].round(2),
+            "Model reliance rank (held-out)": [perm_rank.get(s) for s in order.index[:8]],
+        }), width="stretch", hide_index=True, column_config={"Deviation (σ)": st.column_config.NumberColumn(format="%+.2f")})
+        st.caption("Model reliance rank: where that sensor sits (of 60 features) in held-out permutation importance. "
+                   "The guidance and the model are separate views and need not agree.")
+
+    section("Does this guidance point near the real leaks? (benchmark check, evaluation only)")
+    c = chk.copy()
+    st.dataframe(pd.DataFrame({
+        "Severe episode": c["episode_start"].dt.strftime("%d %b") + " – " + c["episode_end"].dt.strftime("%d %b %Y"),
+        "Leaking pipe (ground truth)": c["leaking_pipe"],
+        "Most-depressed sensor (episode mean)": c["top_sensor"],
+        "Sensor nearest the leak": c["nearest_sensor"],
+        "Its rank of 33": c["nearest_sensor_rank"],
+        "Top-5 sensors": c["top5"],
+    }), width="stretch", hide_index=True)
+    note(f"Averaged over each severe test episode, the sensor physically closest to the leaking pipe ranked "
+         f"<b>{', '.join(f'#{r}' for r in c['nearest_sensor_rank'])}</b> of 33 for pressure drop. That is encouraging, but it "
+         f"is <b>two episodes</b> on a simulated network, map distance rather than hydraulic distance, and other leaks (and "
+         f"normal operations) also move pressures. Treat it as a reason to explore localisation further, not as evidence that "
+         f"WaterGuard can locate leaks.", "gt")
+
+
 def page_timeline():
     hero("Detection Timeline", "Benchmark leakage (ground truth) against the model's alerts and risk, on one time axis.")
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.06, row_heights=[0.55, 0.45],
@@ -329,12 +452,12 @@ def page_timeline():
     fig.add_trace(go.Scattergl(x=al["Timestamp"], y=al["total_leak"], mode="markers", name="AI alert",
                                marker=dict(color=C["alert"], size=3)), 1, 1)
     fig.add_hline(y=SEVERE_THRESHOLD, line_dash="dash", line_color=C["amber"], row=1, col=1,
-                  annotation_text=f"experimental severity threshold = {SEVERE_THRESHOLD:.0f}", annotation_position="top left")
+                  annotation_text=f"experimental severity threshold = {SEVERE_THRESHOLD:.0f} m³/h", annotation_position="top left")
     fig.add_trace(go.Scattergl(x=pred["Timestamp"], y=pred["risk_probability"], mode="lines", name="Risk probability",
                                line=dict(color=C["blue"], width=1)), 2, 1)
     fig.add_hline(y=V2_ALERT_THRESHOLD, line_dash="dash", line_color=C["alert"], row=2, col=1,
                   annotation_text=f"alert threshold {V2_ALERT_THRESHOLD:.2f}", annotation_position="top left")
-    fig.update_yaxes(title="Leakage", row=1, col=1)
+    fig.update_yaxes(title="Leakage (m³/h)", row=1, col=1)
     fig.update_yaxes(title="Probability", range=[0, 1], row=2, col=1)
     style(fig, 640)
     fig.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.08, xanchor="left", x=0), margin=dict(t=40))
@@ -348,7 +471,7 @@ def page_timeline():
         note("<b>Bottom panel</b> is what the model produced from SCADA data alone. An alert is raised when the blue "
              "line crosses the red dashed threshold.")
     with c3:
-        note("Background leakage of roughly 18–25 units is present almost all year (persistent small leaks), which is why "
+        note("Background leakage of roughly 18–25 m³/h is present almost all year (persistent small leaks), which is why "
              "\"any leakage > 0\" was not a useful target.", "gt")
 
 
@@ -376,6 +499,35 @@ def page_sensors():
     note("These features contributed strongly to the Random Forest's predictions. Importance measures how much the model "
          "used a signal to split data — it does <b>not</b> prove that a sensor or location caused leakage. Sensor IDs "
          "(e.g. n215) are L-Town benchmark node names, not real Saudi locations.")
+
+    section("Training-time importance vs held-out reliance")
+    pm = D["perm"].copy()
+    pm["mdi_rank"] = pm["mdi_importance"].rank(ascending=False).astype(int)
+    pm["test_rank"] = pm["test_auc_drop_mean"].rank(ascending=False).astype(int)
+    show_f = list(dict.fromkeys(im["feature"].head(8).tolist() + pm.nlargest(8, "test_auc_drop_mean")["feature"].tolist()))
+    s = pm.set_index("feature").loc[show_f].sort_values("test_auc_drop_mean")
+    c1, c2 = st.columns([1.35, 1])
+    with c1:
+        fig = go.Figure()
+        fig.add_trace(go.Bar(y=s.index, x=s["validation_auc_drop_mean"], orientation="h", name="Validation",
+                             marker_color=C["sky"]))
+        fig.add_trace(go.Bar(y=s.index, x=s["test_auc_drop_mean"], orientation="h", name="Test", marker_color=C["blue"]))
+        fig.update_xaxes(title="ROC-AUC drop when the feature is shuffled")
+        fig.update_layout(barmode="group")
+        show(style(fig, 520))
+    with c2:
+        n215 = pm.set_index("feature").loc["P_n215"]
+        st.markdown(
+            f"**Permutation importance** shuffles one feature on data the model never trained on and measures how much "
+            f"ranking quality (ROC-AUC) drops. It answers *\"does the model need this signal on new data?\"*\n\n"
+            f"The two views disagree in an instructive way. **P_n215** is #1 by training-time (impurity) importance, "
+            f"but #{int(n215['test_rank'])} of 60 on the test period (AUC drop {n215['test_auc_drop_mean']:.3f}). n215 reads "
+            f"almost constantly about 39.09 m in 0.01 m steps; it dipped during a severe *training* leak in March, so the "
+            f"forest split on it heavily, but it barely separates severe from normal periods later in the year.\n\n"
+            f"**P_n229** is the most relied-on signal on both validation and test. Impurity importance is computed on "
+            f"training data and is known to overstate features like n215; held-out permutation importance is the more "
+            f"honest guide to what drives the reported results.")
+        st.caption("Computed after the fact for description only; nothing about the model or threshold was chosen from it.")
 
     section("Signal explorer")
     typ = D["typical"].set_index("feature")
@@ -504,7 +656,7 @@ def page_performance():
         section("Sensitivity to the severity definition")
         s = D["severity"].dropna(subset=["precision"]).sort_values("severity_threshold").copy()
         s = s[["severity_threshold", "test_rate", "precision", "recall", "f1", "roc_auc"]].rename(columns={
-            "severity_threshold": "Severe if total leakage ≥", "test_rate": "Test prevalence", "precision": "Precision",
+            "severity_threshold": "Severe if total leakage ≥ (m³/h)", "test_rate": "Test prevalence", "precision": "Precision",
             "recall": "Recall", "f1": "F1", "roc_auc": "ROC-AUC"})
         st.dataframe(s.round(4), width="stretch", hide_index=True)
         st.caption("Supplementary retraining with other experimental thresholds (37.56 = 80th percentile of training-period "
@@ -513,28 +665,40 @@ def page_performance():
 
 def page_method():
     hero("Methodology & About", "Research question, data provenance, method, limitations and responsible use.")
+    c1, c2 = st.columns(2)
+    with c1:
+        note("<b>Saudi context = motivation and target application.</b><br>Saudi Arabia's Ministry of Environment, Water "
+             "and Agriculture (MEWA) identifies reducing losses in water networks as an improvement opportunity in its "
+             "National Water Strategy, which estimates network losses at more than 25% in different regions.")
+    with c2:
+        note("<b>BattLeDIM L-Town = experimental data.</b><br>Every number in this dashboard comes from a simulated "
+             "international research benchmark (L-Town, built by the KIOS centre, University of Cyprus, for BattLeDIM 2020). None of it is Saudi "
+             "measurement data, and nothing here shows how the model would perform on a Saudi network.", "gt")
     a, b = st.columns([1.2, 1])
     with a:
         st.markdown(f"""
 #### Research question
-*Can machine-learning analysis of pressure, flow, demand and tank-level patterns identify water-network conditions
-associated with elevated water loss — and how reliably, on a later, unseen period?*
-
-#### Why it matters (Saudi context)
-Saudi Arabia's Ministry of Environment, Water and Agriculture lists reducing losses in distribution networks as an
-improvement opportunity in its National Water Strategy ([MEWA](https://www.mewa.gov.sa/en/Ministry/Agencies/TheWaterAgency/Topics/Pages/Strategy.aspx)).
-WaterGuard explores how sensor analytics could support that kind of work. **This motivation is Saudi; the evaluation data is not.**
+*Can machine-learning analysis of pressure, flow, demand and tank-level patterns identify network conditions
+associated with severe water-loss periods in a benchmark distribution network — and how reliably, on a later,
+unseen period?* The Saudi framing asks how such analytics *could* support future water-loss decision support;
+this experiment does not test that.
 
 #### Data provenance
-- **BattLeDIM 2020** (Battle of the Leakage Detection and Isolation Methods), L-Town benchmark network, 2018 SCADA
-  and leakage files. Vrachimis et al., Zenodo, [doi:10.5281/zenodo.4017659](https://doi.org/10.5281/zenodo.4017659), CC BY 4.0.
-- 105,120 timestamps at 5-minute resolution; 33 pressure, 82 demand, 3 flow and 1 tank-level signal; 14 leak locations.
-- **Not Saudi utility data.** Sensor names (e.g. n215, p235) are benchmark identifiers, not real locations.
+- **BattLeDIM 2020** (Battle of the Leakage Detection and Isolation Methods), L-Town network, 2018 SCADA and
+  leakage files. Vrachimis et al., Zenodo, [doi:10.5281/zenodo.4017659](https://doi.org/10.5281/zenodo.4017659), CC BY 4.0.
+- 105,120 timestamps at 5-minute resolution; 33 pressure (m), 82 demand (L/h), 3 flow (m³/h) and 1 tank-level (m)
+  signal; leakage at 14 pipes (m³/h).
+- Sensor names (e.g. n215, p235) are benchmark identifiers, not real locations.
 
 #### Target definition
 97.8% of timestamps contain some positive leakage because several small leaks persist all year, so "any leak > 0"
-is almost always true. WaterGuard instead flags **total leakage ≥ {SEVERE_THRESHOLD:.0f}** — an *experimental benchmark
-severity threshold* (≈ 80th percentile of 2018 total leakage), not an engineering, utility, regulatory or Saudi standard.
+is almost always true. WaterGuard instead flags **total leakage ≥ {SEVERE_THRESHOLD:.0f} m³/h** — an *experimental
+benchmark severity threshold* (≈ 80th percentile of 2018 total leakage), not an engineering, utility, regulatory,
+competition or Saudi standard.
+
+#### Sources
+- MEWA, *National Water Strategy* page ([link](https://www.mewa.gov.sa/en/Ministry/Agencies/TheWaterAgency/Topics/Pages/Strategy.aspx), last edited 6 Jul 2025).
+- BattLeDIM dataset ([Zenodo](https://zenodo.org/records/4017659)) and competition site ([battledim.ucy.ac.cy](https://battledim.ucy.ac.cy/)).
 """)
     with b:
         st.markdown("""
@@ -544,31 +708,39 @@ severity threshold* (≈ 80th percentile of 2018 total leakage), not an engineer
 3. Create the target from ground truth — used for training labels and evaluation only
 4. Chronological split: train 60% · validation 10% · test 30%
 5. Median imputer fitted on training data only
-6. Random Forest (300 trees, depth 16, balanced class weights)
-7. Alert threshold chosen by best F1 on **validation**
+6. Random Forest (300 trees, depth 16, min leaf 4, balanced class weights)
+7. Alert threshold chosen by best F1 on **validation** (0.22)
 8. One final evaluation on the untouched **test** period
-9. Pre-computed outputs → this dashboard
+9. Separately: time-of-day pressure deviations for inspection guidance
+10. Pre-computed outputs → this dashboard (no retraining in the app)
 
 #### Limitations
 - Simulated benchmark network; one year; only 2 severe episodes in test.
 - Recall is limited (38%); many severe periods are missed.
-- The 40 threshold was chosen from the full-year distribution (label definition only; no feature leakage).
-- Leak signatures shift between periods (see Logistic Regression result).
-- No localisation: the model says *when*, not *where*.
+- The 40 m³/h threshold was read from the full-year distribution (label definition only; no feature leakage).
+- Leak signatures shift between periods (Logistic Regression ranks the test period worse than random).
+- The top training-time feature (n215) contributes little on held-out data.
+- The model says *when*, not *where*; inspection guidance is a heuristic checked on two episodes only.
+- Probabilities are not calibrated.
 
 #### Future work
-Evaluate on 2019 BattLeDIM data; event-based alert logic (persistence / hysteresis); leak localisation using
-the network model; probability calibration; testing with real utility data under a data-sharing agreement.
+Evaluate on 2019 BattLeDIM data; event-based alerting (persistence / hysteresis); walk-forward validation;
+model-based leak localisation; probability calibration; testing on real utility data under a data-sharing agreement.
 """)
-    note("<b>Responsible use.</b> WaterGuard AI Saudi is an educational research prototype. It is not an operational "
-         "utility system, has no partnership with or endorsement from any Saudi utility or government body, and has not "
-         "been validated on real Saudi network data. It must not be used for operational decisions.", "gt")
+    section("Possible future real-world architecture (does not exist today)")
+    st.markdown("Utility SCADA stream → real-time validation & features → trained model → risk score → operator dashboard "
+                "→ field inspection → inspection outcome fed back as new labels. None of these live components exist in "
+                "this prototype; it replays a 2018 benchmark.")
+    note("<b>Disclaimer.</b> WaterGuard AI Saudi is an independent educational research prototype and is not affiliated "
+         "with or endorsed by a Saudi government entity or water utility. It has not been validated on real Saudi network "
+         "data and must not be used for operational decisions.", "gt")
 
 
 pages = [
-    st.Page(page_overview, title="Overview", icon=":material/dashboard:", default=True),
+    st.Page(page_overview, title="Network Overview", icon=":material/dashboard:", default=True),
     st.Page(page_monitor, title="Risk Monitor", icon=":material/monitoring:", url_path="monitor"),
     st.Page(page_explain, title="Alert Explainer", icon=":material/troubleshoot:", url_path="explain"),
+    st.Page(page_inspect, title="Inspection Guidance", icon=":material/travel_explore:", url_path="inspect"),
     st.Page(page_timeline, title="Detection Timeline", icon=":material/timeline:", url_path="timeline"),
     st.Page(page_sensors, title="Sensor Intelligence", icon=":material/sensors:", url_path="sensors"),
     st.Page(page_performance, title="Model Performance", icon=":material/analytics:", url_path="performance"),

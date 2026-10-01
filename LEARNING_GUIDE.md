@@ -1,153 +1,204 @@
 # WaterGuard AI Saudi — Learning Guide
 
-This guide is written so you can **explain every part of the project yourself**, in an interview or on a university application. The language is simple, but the technical content is accurate.
+This guide is written so you can **explain every part of WaterGuard yourself**: in an interview, an application essay or a viva. The language is simple; the content matches the final project exactly. Every number here comes from the executed code.
+
+**Learn these ten first:** (1) the Saudi-motivation / benchmark-data distinction, (2) why "any leak > 0" fails, (3) why ≥ 40 m³/h and that it is experimental, (4) chronological split, (5) data leakage and how it was prevented, (6) precision vs recall, (7) why V1 had good ROC-AUC but useless recall, (8) threshold tuning on validation (0.22), (9) feature importance ≠ causation, plus the n215 story, (10) the limitations, especially the two test episodes.
 
 ---
 
-## 1. What problem does WaterGuard solve?
-Water pipes leak. Some leaks are small and last for months. Others are big and appear suddenly. A utility can't dig up every pipe, but it does record sensor readings every few minutes. WaterGuard reads those readings and says: *"Right now the network looks like it did during periods of severe water loss."* That helps a human decide where to look first.
+## Part A — The water side
 
-**Important honesty point:** the project is motivated by water loss in Saudi Arabia, but the data comes from **BattLeDIM L-Town**, a simulated international research benchmark. It is *not* Saudi data.
+**SCADA** (*Supervisory Control and Data Acquisition*). The system a utility uses to collect sensor readings from its network and show them to operators. In WaterGuard every model input comes from the BattLeDIM SCADA file, one reading every 5 minutes for all of 2018.
 
-## 2. Key water-network terms
-| Term | Simple meaning | Why it matters for leaks |
+**Pressure (metres of head).** How hard water pushes inside a pipe at a point. 33 sensors. A leak lets water escape, so pressure near it usually falls a little. That is why individual pressure sensors matter so much.
+
+**Flow (m³/h).** How much water moves through a pipe per hour. Two inlet pipes (p227, p235) and one pump. Water lost through leaks has to be supplied, so inflow can rise, especially at night when normal use is low.
+
+**Demand (L/h).** How much customers use, from 82 meters. It follows a daily rhythm (mornings, evenings). The model must not mistake normal morning demand for a leak, which is why time of day is a feature.
+
+**Tank level (m).** Height of water in tank T1. Tanks buffer supply and demand. Unusual draining can hint at extra outflow.
+
+**Leakage (m³/h).** The benchmark's ground truth: how much water each of 14 simulated leaks loses at each moment. It is only used to create labels and to grade the model, never as an input.
+
+## Part B — The data-science side
+
+**Time-series data.** Measurements ordered in time. Neighbouring points are strongly related: the pressure at 10:05 is almost the same as at 10:00. This affects how you split and evaluate.
+
+**Feature.** One number the model looks at for each moment, e.g. "pressure at n229" or "spread of the 33 pressures" (`pressure_std`). V2 has 60.
+
+**Feature engineering.** Building useful features from raw data, for example the 30-minute change in average pressure, or turning hour of day into `sin` and `cos` so that 23:55 and 00:00 end up close together instead of 24 hours apart.
+
+**Target (label).** What the model tries to predict. Here: *is total leakage ≥ 40 m³/h at this 5-minute step?* (1 = severe, 0 = not).
+
+**Class imbalance.** When one answer is much rarer than the other. About 17% of training steps are severe. A model can look "accurate" by always saying "not severe". WaterGuard counters this with class weights and by judging precision, recall and F1 instead of accuracy.
+
+**Class weights.** Telling the model that mistakes on the rare class count more. `class_weight="balanced_subsample"` makes each tree weight severe and normal examples so that both classes matter equally.
+
+**Chronological split.** Train on the past, choose settings on the next period, test on a later period:
+- *Train* (1 Jan – 7 Aug): the model learns.
+- *Validation* (8 Aug – 13 Sep): we make choices, here the alert threshold.
+- *Test* (13 Sep – 31 Dec): used **once** at the end to measure honestly.
+
+A random split would put near-identical neighbouring readings into both train and test, so the test would be a memory test, not a prediction test.
+
+**Data leakage (the machine-learning kind).** Information the model would not have in real life sneaking into training or evaluation, which makes results look better than they are. WaterGuard checked for and prevented: ground truth as a feature, features that look into the future, preprocessing fitted on test data, and choosing the threshold on the test set. Automated tests check all of these.
+
+**Random Forest.** Hundreds of decision trees. Each tree learns from a random sample of rows and considers a random subset of features at each split. Each tree votes, and the share of trees voting "severe" is the probability. It captures non-linear patterns and interactions between sensors without needing scaled inputs.
+
+**Probability (risk score).** The model's output between 0 and 1, e.g. 0.73 ≈ "73% of trees say severe". Treat it as a **risk ranking score**. It is not calibrated, so 0.73 does not mean a 73% real-world chance.
+
+**Classification threshold.** The cut-off that turns a probability into a yes/no alert. The default is 0.5. V2 uses **0.22**, chosen because it gave the best F1 on validation. Lower thresholds catch more severe periods but raise more false alarms.
+
+**Confusion matrix.** The four possible outcomes:
+
+| | Model: not severe | Model: severe (alert) |
 |---|---|---|
-| **SCADA** | *Supervisory Control and Data Acquisition*: the system that collects sensor readings from a network and shows them to operators. | It is the source of all model inputs. |
-| **Pressure** (metres of water head) | How hard water pushes inside the pipe at a point. | A leak lets water escape, so nearby pressure usually drops a little. |
-| **Flow** (m³/h) | How much water moves through a pipe per hour. | Water lost through leaks must be replaced, so inflow can rise, especially at night when normal use is low. |
-| **Demand** (L/h) | How much water customers use. | Normal demand changes over the day. The model must not confuse morning usage with a leak. |
-| **Tank level** (m) | Height of water in a storage tank. | Tanks buffer supply and demand. Unusual draining can hint at extra outflow. |
+| **Really not severe** | True Negative (TN) — correctly quiet | **False Positive (FP)** — false alarm |
+| **Really severe** | **False Negative (FN)** — missed | True Positive (TP) — caught |
 
-## 3. Machine-learning terms
-**Feature.** One number the model looks at for each moment in time, e.g. "pressure at sensor n215" or "spread of all pressures".
+V2 on test: TN 22,332 · FP 210 · FN 5,561 · TP 3,433.
 
-**Feature engineering.** Creating useful features from raw data. Examples from this project: the standard deviation across 33 pressure sensors (`pressure_std`); the 30-minute change in average pressure; turning the hour of day into `sin`/`cos` so that 23:55 and 00:00 end up close together.
+**Precision** = TP / (TP + FP) = 3,433 / 3,643 = **94.2%**. *When it alerts, how often is it right?*
 
-**Random Forest.** Many decision trees, each trained on a random sample of the data and features. Each tree votes, and the share of "severe" votes becomes the probability. It handles non-linear patterns and interactions well.
+**Recall** = TP / (TP + FN) = 3,433 / 8,994 = **38.2%**. *Of all severe moments, how many did it catch?*
 
-**Classification probability.** The model outputs a number between 0 and 1, e.g. 0.73, meaning "73% of the trees voted severe". It is a *risk score*, not a guaranteed real-world probability (the scores are not calibrated).
+> 94% precision does **not** mean 94% of leaks are detected. That is recall, and it is 38%.
 
-**Threshold.** The cut-off that turns a probability into a yes/no alert. V2 raises an alert when probability ≥ 0.22. Lowering the threshold catches more severe periods but also raises more false alarms.
+**F1 score.** The harmonic mean of precision and recall = **0.543**. It is only high if both are high. For context, "always alert" already gets 0.444 on this test set.
 
-**Train / validation / test.**
-- *Train*: the model learns from this data.
-- *Validation*: used to make choices, here the threshold.
-- *Test*: used **once**, at the end, to measure performance honestly.
+**ROC-AUC** = **0.950**. Pick one random severe moment and one random normal moment: AUC is the chance the model gives the severe one the higher score. 0.5 is random, 1.0 is perfect. It measures **ranking** over all thresholds, not performance at the threshold you actually use.
 
-**Why chronological splitting matters.** Sensor readings 5 minutes apart are almost identical. With a random split, the test set would contain near-copies of training rows, and the score would look unrealistically good. A real system always predicts the **future** from the **past**, so WaterGuard trains on January–early August, tunes on August–September, and tests on September–December.
+**False positive / false negative in water terms.** A false positive sends a crew to look for a leak that isn't severe, which wastes time and erodes trust. A false negative leaves a severe loss running unnoticed. V2 makes few of the first and many of the second.
 
-## 4. Evaluation metrics
-Take one test moment. There are four possible outcomes:
+**Feature importance — two kinds.**
+- *Impurity (MDI) importance*: how much each feature helped the trees split the **training** data. Fast, but can over-reward features that only helped on training episodes.
+- *Permutation importance*: shuffle one feature on **held-out** data and see how much AUC drops. It answers "does the model need this signal on new data?"
 
-| | Model says "not severe" | Model says "severe" (alert) |
-|---|---|---|
-| **Really not severe** | True Negative (TN) | False Positive (FP): false alarm |
-| **Really severe** | False Negative (FN): missed | True Positive (TP): caught |
+In WaterGuard they disagree: `P_n215` is #1 by impurity but #54 of 60 by test permutation; `P_n229` is #1 by permutation. Know this story (Q24).
 
-This table is the **confusion matrix**. V2's version is TN 22,332 · FP 210 · FN 5,561 · TP 3,433.
+**Causation vs association.** Feature importance shows what the model **used** (association), not what **caused** a leak. A sensor can be important because it sits where a leak's effects show up, or by coincidence with one training episode, as with n215.
 
-- **Precision** = TP / (TP + FP) = 3,433 / 3,643 = **94.2%**. *When it alerts, how often is it right?*
-- **Recall** = TP / (TP + FN) = 3,433 / 8,994 = **38.2%**. *Of all severe moments, how many did it catch?*
-- **F1** is the harmonic mean of precision and recall = **0.543**. It stays high only if both are high.
-- **ROC-AUC** = **0.950**. If you pick one random severe moment and one random normal moment, it is the chance the model gives the severe one a higher score. 0.5 is random guessing and 1.0 is perfect. It measures *ranking*, independent of the threshold.
+**Model artifact.** The saved trained model and everything needed to use it again: the Random Forest, the fitted imputer, the ordered feature list and the threshold (`models/*.joblib`).
 
-**Feature importance.** How much each feature helped the forest split the data (mean decrease in impurity). It tells you what the *model used*. It does **not** tell you what *caused* a leak.
+**joblib.** A Python library for saving and loading such objects to disk (`joblib.dump`, `joblib.load`). Retraining V2 from scratch reproduces the saved probabilities to within 3e-16.
 
-**Data leakage (the ML kind).** When information the model would not have in real life sneaks into training or evaluation. Examples: using the leakage ground truth as a feature, fitting preprocessing on test data, or choosing the threshold on the test set. WaterGuard avoids all three, and the tests check for them.
+**Streamlit.** A Python library that turns a script into a web app. Each widget interaction reruns the script.
 
-## 5. The story of the project
-**Why "any leak > 0" did not work.** In 97.8% of timestamps, at least one leak is above zero, because several small leaks last almost all year. A target that is "yes" 98% of the time teaches the model nothing. So the project defines **severe** as *total leakage ≥ 40*. That is an experimental cut-off at roughly the 80th percentile, and it is **not** an official standard.
+**Caching.** Because Streamlit reruns the script on every click, `@st.cache_data` keeps loaded data in memory so it is read once, not on every interaction. WaterGuard also never retrains or reads the 92 MB raw file in the app; it loads small pre-computed files (about 0.7 s).
 
-**Why V1 failed operationally despite a decent ROC-AUC (0.86).** V1 ranked risky moments reasonably well, but with the default threshold of 0.5 it raised only 47 alerts and caught 20 of 8,994 severe moments (recall 0.2%). Its top feature was `month`, so it was partly memorising *when* leaks happened in 2018. A good ranking is useless if the alert threshold never fires.
+**Deployment.** Putting the app on a public server so others can use it. Plan: push to GitHub → Streamlit Community Cloud (free) builds it from `requirements.txt` and serves `app.py`.
 
-**What V2 changed.**
-1. Kept all 33 individual pressure sensors.
-2. Added flow, tank, time-of-day and short-term-change features.
-3. Removed `month`.
-4. Added a validation period and chose the threshold (0.22) there.
-
-The result was precision 94%, recall 38% and ROC-AUC 0.95 on the untouched test period.
-
-**What deeper analysis revealed.**
-- The test period contains only **two** severe leak episodes. V2 alerted at the very start of both, but was only above threshold for part of each.
-- An "always alert" rule gets F1 0.44, so V2's real advantage is its **precision and ranking**.
-- Logistic Regression scored ROC-AUC 0.22, worse than random. The patterns of test-period leaks differ from training-period leaks, and a linear model could not adapt.
-
-## 6. Strengths
-- Real, public benchmark data, handled carefully (a tricky CSV format, integrity checks).
-- An honest time-based evaluation with a separate validation period.
-- A thoughtful target definition, backed by a data discovery.
-- High-precision alerts (few false alarms) and strong ranking (AUC 0.95).
-- A clear dashboard that separates model output from ground truth, with an explanation view.
-- Reproducible: retraining gives identical probabilities, and automated tests guard the results.
-
-## 7. Limitations
-- A simulated network, one year, and only two severe test episodes.
-- Many severe moments are missed (recall 38%).
-- The model says *when* the network looks risky, not *where* the leak is.
-- The severity threshold is experimental.
-- Leak signatures change over time, so performance may not transfer.
+**Inspection guidance.** A separate, transparent heuristic: compare each pressure sensor with its usual value **at the same time of day** (from normal training periods), and rank the biggest drops. It suggests where to start looking. It is not leak localisation.
 
 ---
 
-## 8. Likely interview questions (with short answers)
+## Part C — The story in order
+1. **Inspect the data.** The leakage CSV crashed with pandas defaults (`;` separators, `,` decimals) → read with `sep=";", decimal=","`.
+2. **"Any leak > 0" is true 97.8% of the time** → useless target.
+3. **Severity analysis** → experimental target: total leakage ≥ 40 m³/h (≈ 80th percentile).
+4. **V1** → ROC-AUC 0.86 but recall 0.2% at threshold 0.5; `month` was its top feature.
+5. **V2** → 60 hydraulic features, no month, a validation period, threshold 0.22 → precision 94%, recall 38%, AUC 0.95.
+6. **Audit** → no data leakage. Found: only two test episodes, prevalence shift, Logistic Regression worse than random.
+7. **Final pass** → everything reproduced from raw data; n215 importance story; inspection guidance checked against true leak locations.
 
-1. **What does your project do, in one sentence?**
-   It uses machine learning on water-network sensor data to flag periods when the network appears to be losing a lot of water, and shows this in a decision-support dashboard.
+## Part D — Strengths and limitations
+**Strengths:** real public benchmark handled carefully; an honest time-based evaluation; a target backed by a data discovery; high-precision alerts and strong ranking; a dashboard that keeps model output and ground truth separate; reproducible, tested code.
+
+**Limitations:** simulated network, one year, two severe test episodes; recall 38%; experimental threshold; non-stationary leak signatures; no true localisation; uncalibrated probabilities; correlated 5-minute steps.
+
+---
+
+## Part E — 31 interview questions and answers
+
+1. **What problem does WaterGuard solve?**
+   It flags periods when a water network's sensor patterns look like severe water loss, and suggests which pressure sensors to inspect first, so a human can prioritise. It is a decision-support prototype.
 
 2. **Is this Saudi data?**
-   No. It is the BattLeDIM L-Town international benchmark. The project is motivated by water loss in Saudi Arabia, but I evaluated it on public benchmark data.
+   No. It is the BattLeDIM L-Town benchmark, a simulated network from an international competition. Saudi Arabia is the motivation: MEWA's National Water Strategy highlights reducing network losses. The results say nothing about Saudi networks.
 
-3. **Why didn't you just predict "leak" vs "no leak"?**
-   Because 97.8% of timestamps already contain some leakage from small persistent leaks. That label is almost always "yes", so I targeted severe total leakage instead.
+3. **Why is that distinction so important to you?**
+   Because claiming Saudi data would be false, and anyone checking would lose trust in everything else. Motivation and evidence are different things.
 
-4. **Where does the threshold of 40 come from?**
-   From the data. It is about the 80th percentile of total 2018 leakage. It is an experimental benchmark definition, not an engineering standard. I also tested 30, 35, 45 and a training-only percentile to show how results change.
+4. **Why was "any leakage > 0" a bad target?**
+   97.8% of timestamps already contain some leakage from small, long-running leaks. A label that is "yes" almost always teaches nothing, and a model that always says "yes" would look accurate.
 
-5. **Why didn't you shuffle the data before splitting?**
-   Neighbouring 5-minute readings are nearly identical, so shuffling would leak information and inflate the score. A real system predicts the future from the past.
+5. **Why did you choose ≥ 40?**
+   From the data: it is about the 80th percentile of 2018 total leakage, so it marks the upper fifth, the clearly severe periods.
 
-6. **What is the validation set for?**
-   To choose the alert threshold. If I chose it on the test set, the test score would be optimistic.
+6. **Is 40 an official engineering threshold?**
+   No. It is an experimental modelling threshold I created for this prototype. It is not a utility, regulatory, competition or Saudi standard. I tested 30, 35, 37.56, 45 and 50 to show how results depend on it.
 
-7. **Your precision is 94% but recall is only 38%. Is that good?**
-   It means alerts are trustworthy but many severe periods are missed. For an operator, few false alarms is valuable, but improving recall is the main future goal.
+7. **Isn't choosing 40 from the full year a kind of leakage?**
+   Partly a fair concern: the percentile used the whole year's labels. It affects only the label definition, not the features. Using the training-only 80th percentile (37.56) gives similar results (F1 0.58 vs 0.54).
 
-8. **Why is ROC-AUC high while recall is low?**
-   ROC-AUC measures ranking across all thresholds. Recall depends on the one threshold chosen. The model ranks well, but at 0.22 it stays quiet during part of each episode.
+8. **Why didn't you use a random train/test split?**
+   Neighbouring 5-minute readings are almost identical, so a random split leaks near-copies into the test set. A real system predicts the future from the past, so I split by time.
 
-9. **What was wrong with V1?**
-   At the default threshold it hardly ever alerted (recall 0.2%), and its most important feature was the month, so it was partly learning calendar patterns rather than hydraulics.
+9. **What is the validation set for?**
+   Making choices — here, the alert threshold. If I chose it on the test set, the test score would be optimistic.
 
-10. **Why remove the month feature?**
-    Because leaks don't care what month it is. Month let the model memorise when 2018's leaks happened, which would not generalise to a new year.
+10. **Why did V1 fail?**
+    At the default 0.5 threshold it raised only 47 alerts and caught 20 of 8,994 severe steps (recall 0.2%). Its top feature was the month, so it was partly memorising when 2018's leaks happened.
 
-11. **Why a Random Forest?**
-    It handles non-linear relationships and interactions between sensors, needs little scaling, and gives feature importances. A linear model (Logistic Regression) performed much worse in my comparison.
+11. **How can ROC-AUC be good while recall is terrible?**
+    ROC-AUC measures ranking across all thresholds. V1 ranked severe moments higher than normal ones but rarely above 0.5, so at that threshold it almost never alerted.
 
-12. **Which features mattered most?**
-    Individual pressure sensors such as n215, n229 and n114, and pressure spread (`pressure_std`, `pressure_range`). These features contributed strongly to the model's predictions. That doesn't prove they caused anything.
+12. **Why did you remove month?**
+    Leaks don't follow the calendar. Month let the model learn *when* leaks happened in 2018, which would not generalise to another year.
 
-13. **How do you explain a single alert?**
-    The Alert Explainer shows the signal values against typical training ranges, and how much the risk would change if each signal were replaced by its typical value. It is a descriptive view of the model, not a cause.
+13. **Why tune the threshold at all?**
+    0.5 is only a default. The right threshold depends on the trade-off you want between false alarms and misses, and it should be chosen on data the final test never sees.
 
-14. **How did you prevent data leakage?**
-    Ground truth is never a feature, the imputer is fitted on training data only, features use only past values, the threshold is chosen on validation, and the test set is used once. Tests check these.
+14. **Why 0.22?**
+    It gave the best F1 on the validation period (precision 0.31, recall 0.70, F1 0.43). I didn't look at test results when choosing it.
 
-15. **What surprised you?**
-    The whole test period contains only two severe leak episodes. Also, Logistic Regression was worse than random on test, which showed me that leak patterns change over time.
+15. **What does 94% precision mean?**
+    Of the 3,643 alerts V2 raised on the test period, 3,433 were during genuinely severe periods. Alerts are usually trustworthy.
 
-16. **How would you improve it?**
-    Test on 2019 data, add alert logic that keeps an alarm on for the whole episode, localise leaks using the network model, and calibrate the probabilities.
+16. **What does 38% recall mean?**
+    Of 8,994 severe 5-minute steps, V2 caught 3,433 and missed 5,561. Most severe time went unflagged.
 
-17. **Could this be used by a utility today?**
-    No. It is an educational prototype validated only on a simulated benchmark. Real use would need real data, validation with engineers and a proper deployment process.
+17. **Why is test precision (94%) so different from validation precision (31%)?**
+    Mainly prevalence: severe steps were 13% of validation but 28.5% of test. With more positives around, the same alerts are more often right. Different leaks in each period also matter.
 
-18. **How do you know your results are reproducible?**
-    Retraining with the same random seed reproduced the saved probabilities to within 2.2e-16, and automated tests check the verified numbers.
+18. **How many leak episodes are in the test period?**
+    Only two: pipe p158 (6–23 Oct) and pipe p369 (26 Oct–8 Nov). V2 alerted at the first 5-minute step of both, then covered 48% and 26% of them. Two episodes are too few to claim event-level reliability.
 
-19. **What did you learn most from this project?**
-    That a good metric can hide a weak system (V1), that problem framing and the target definition matter as much as the model, and that honest evaluation means reporting weaknesses too.
+19. **Did you compare against baselines?**
+    Yes, on the same split with thresholds chosen on validation. "Always alert": F1 0.44, AUC 0.5. Single signal: AUC 0.61. Logistic Regression: AUC 0.22. Isolation Forest: AUC 0.74. V2: AUC 0.95, precision 94%.
 
-20. **What does F1 = 0.54 mean compared with a simple rule?**
-    Always alerting would get F1 = 0.44 on this test set, so F1 alone is not impressive. The real gains are precision (94% vs 29%) and ranking (AUC 0.95 vs 0.5).
+20. **Logistic Regression got AUC 0.22 — worse than random. What does that tell you?**
+    The linear relationships it learned from training-period leaks reversed for test-period leaks. Leak signatures change over time, which is a warning about generalisation for any model here.
+
+21. **Why a Random Forest?**
+    It handles non-linear relationships and sensor interactions, needs no scaling, copes with imbalance through class weights, and clearly beat the linear baseline. I didn't try many models to chase a number.
+
+22. **How did you prevent data leakage?**
+    Ground truth is never a feature; features use only current and past values; the imputer is fitted on training data only; the threshold is chosen on validation; the test set is scored once. Automated tests check each of these.
+
+23. **Which features mattered most?**
+    By held-out permutation importance, pressure sensor n229 by far, then n613, n188, n752 and n506. By training-time impurity importance, n215 and pressure spread lead. These features contributed strongly to the model's predictions; that doesn't mean they caused leaks.
+
+24. **Why do the two importance rankings disagree?**
+    n215 is almost constant (about 39.09 m). It dropped only during the March training leak, so the forest split on it heavily (impurity importance), but on later data shuffling it barely changes performance. Impurity importance is measured on training data; permutation importance on held-out data is the better guide.
+
+25. **Can the model identify the exact leaking pipe?**
+    No. It predicts *when* conditions look severe, not *where*. I added separate inspection guidance that ranks pressure sensors by their drop from normal. On the two test episodes, the sensor nearest the real leak ranked #1 and #2 of 33, which is encouraging but far from proof of localisation.
+
+26. **How do you explain a single alert?**
+    The Alert Explainer replaces one key signal at a time with its typical value and re-scores. That shows which signals pushed this alert's risk up. It describes the model's behaviour, not physical causes.
+
+27. **Would you deploy this in a real Saudi network?**
+    Not as it is. It was only tested on a simulated benchmark, recall is 38%, and leak patterns shift. A real deployment would need the utility's own data, engineers' validation, a pilot run alongside existing methods, and monitoring.
+
+28. **What is the biggest limitation?**
+    The evidence base: one simulated year with only two severe test episodes. Low recall comes second.
+
+29. **How would you improve it?**
+    Evaluate on BattLeDIM 2019 (an independent year); add alert logic that stays on for a whole episode (persistence/hysteresis) and measure event-level recall; use walk-forward validation; calibrate probabilities; try model-based localisation with the network model.
+
+30. **How do you know your results are reproducible?**
+    Retraining from raw data reproduces the saved probabilities to within 3e-16 and gives the same confusion matrix. Re-running the experiments produced byte-identical files, and 45 automated tests check the verified numbers and the pipeline.
+
+31. **What did you learn most?**
+    That a good metric can hide a useless system (V1), that framing the target matters as much as the model, that importance plots can mislead (n215), and that honest evaluation means reporting what doesn't work.

@@ -33,8 +33,8 @@ for sheet in xls.sheet_names:
     print(df.to_string(index=False))
 
 print("\n[4] LEAKAGE FILE")
-# Fixed: the file uses ";" separators and "," decimals (was read with defaults,
-# which produced a single text column).
+# Fixed: the file uses ";" separators and "," decimals. The original call
+# pd.read_csv(leak_path) failed with a ParserError at line 2312.
 leaks = pd.read_csv(leak_path, sep=";", decimal=",", parse_dates=["Timestamp"])
 
 print("Shape:", leaks.shape)

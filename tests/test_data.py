@@ -20,10 +20,21 @@ def test_leakage_parser_handles_semicolon_and_decimal_comma(tmp_path):
     assert pd.api.types.is_datetime64_any_dtype(df["Timestamp"])
 
 
-def test_default_csv_parsing_would_be_wrong():
-    """Documents why sep=';' / decimal=',' is required."""
-    naive = pd.read_csv(io.StringIO(SAMPLE))
-    assert naive.shape[1] == 1
+def test_default_csv_parsing_fails_like_the_real_file():
+    """Documents why sep=';' / decimal=',' is required: with pandas defaults the header is one
+    column and the first row with a decimal comma breaks the parser (line 2312 in the real file)."""
+    import pytest
+    text = "Timestamp;p31;p158\n" + "2018-01-01 00:00;0;0\n" * 3 + "2018-01-01 00:15;0;1,5\n"
+    with pytest.raises(pd.errors.ParserError):
+        pd.read_csv(io.StringIO(text))
+
+
+@needs_leakage
+def test_real_leakage_file_fails_with_default_parsing():
+    import pytest
+    from waterguard.config import LEAKAGE_FILE
+    with pytest.raises(pd.errors.ParserError, match="line 2312"):
+        pd.read_csv(LEAKAGE_FILE)
 
 
 def test_target_uses_total_leak_threshold(tmp_path):

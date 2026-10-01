@@ -12,6 +12,8 @@ __pycache__/
 # Raw BattLeDIM data (CC BY 4.0, ~98 MB) - download with scripts/download_data.py
 data/*.xlsx
 data/*.csv
+data/*.inp
+data/*.part
 data/cache/
 
 # Trained model binaries (~25 MB each) - regenerate with src/train_v1.py / src/train_v2.py
@@ -26,3 +28,9 @@ desktop.ini
 .env
 .streamlit/secrets.toml
 *.log
+
+# Private session hand-off notes (contain local paths)
+WATERGUARD_CHAT_CONTEXT.md
+
+# Playwright / screenshot scratch
+.playwright/
