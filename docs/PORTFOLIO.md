@@ -10,17 +10,17 @@ A Saudi-motivated machine-learning prototype that flags severe water-loss period
 
 ## CV — exactly two bullets
 - Built a Random Forest decision-support prototype that flags severe water-loss periods from 60 engineered hydraulic SCADA features (BattLeDIM L-Town benchmark, 105,120 five-minute records); on an untouched later test period it reached 94% alert precision and ROC-AUC 0.95, with recall of 38% reported openly.
-- Designed a leakage-safe chronological train/validation/test evaluation with validation-only threshold tuning, compared it against four baselines, and shipped an 8-page Streamlit dashboard with per-alert explanations and sensor inspection guidance, backed by automated tests and fully reproducible pipelines.
+- Designed a leakage-safe chronological evaluation with validation-only threshold tuning and four baselines, then packaged the model as an application: a validated upload-and-analyse workflow (Streamlit) and a FastAPI inference API sharing one tested service layer, with per-alert explanations, sensor inspection guidance and CSV export.
 
 ## GitHub repository description (≤ 350 characters)
-ML decision-support prototype that flags severe water-loss periods from hydraulic SCADA data (pressures, flows, tank level). Random Forest, chronological evaluation, validation-tuned threshold, Streamlit dashboard. Evaluated on the BattLeDIM L-Town benchmark — not Saudi utility data.
+ML water-loss decision-support prototype: upload hydraulic SCADA data, get risk, alerts, explanations and sensor inspection guidance. Random Forest with chronological evaluation and validation-tuned threshold; Streamlit app + FastAPI API. Evaluated on the BattLeDIM L-Town benchmark — not Saudi utility data.
 
 Suggested topics: `machine-learning` `water` `leak-detection` `scada` `time-series` `random-forest` `streamlit` `scikit-learn` `sustainability`
 
 ## Portfolio description (website card / page)
 **Problem.** Water networks lose water through leaks, and utilities collect more sensor data than people can review. Saudi Arabia's National Water Strategy (MEWA) identifies reducing network losses as an improvement opportunity.
 
-**Solution.** WaterGuard reads pressure, flow, demand and tank-level signals every 5 minutes and estimates whether the network is in a severe water-loss period. A dashboard explains each alert and ranks pressure sensors by how far they have dropped below normal, as a starting point for inspection.
+**Solution.** Upload L-Town-compatible SCADA data (pressures, flows, demands, tank level every 5 minutes). WaterGuard validates it, builds 60 hydraulic features, runs the saved model and returns risk, alerts, an explanation for each alert, a ranking of pressure sensors to inspect first and a downloadable predictions file. The verified 2018 evaluation is available as a benchmark demo. The same engine is exposed as an HTTP API.
 
 **How it was evaluated.** On the public BattLeDIM L-Town benchmark (a simulated network; not Saudi data). Train on January–August, tune the alert threshold on August–September, test once on September–December. A first version (V1) looked fine on ROC-AUC but caught almost nothing; the redesign (V2) removed a misleading calendar feature and added 60 hydraulic features.
 
@@ -28,20 +28,21 @@ Suggested topics: `machine-learning` `water` `leak-detection` `scada` `time-seri
 
 **What I learned.** A good metric can hide a useless model; the target definition matters as much as the algorithm; and importance plots can mislead: the "top" sensor contributed almost nothing on new data.
 
-**Tech stack.** Python 3.13 · pandas · NumPy · scikit-learn · Plotly · Streamlit · pytest · Git
+**Tech stack.** Python 3.13 · pandas · NumPy · scikit-learn · Plotly · Streamlit · FastAPI · pytest · Git
 
-**Architecture.** BattLeDIM SCADA → validation → feature engineering → chronological split → Random Forest → validation threshold → test evaluation → saved outputs → Streamlit dashboard.
+**Architecture.** Offline: BattLeDIM SCADA → feature engineering → chronological split → Random Forest → validation threshold → test evaluation → saved artifacts. Online: upload → validation → same 60 features → saved model → risk, alerts, explanations, inspection guidance → export; Streamlit app and FastAPI share one service layer.
 
 **Limitations (show them).** Simulated network; one year; two severe test episodes; recall 38%; experimental severity threshold; no true leak localisation.
 
 **Links.** GitHub: _add after publishing_ · Live demo: _add after deploying_
 
 ## Recommended screenshots (in `docs/screenshots/`)
-1. `overview.png` — headline KPIs, precision-vs-recall note, risk timeline with severe bands
-2. `inspect.png` — network map with sensor deviations (the most distinctive visual)
-3. `performance.png` — confusion matrix, curves, baselines
-4. `sensors.png` — impurity vs held-out importance (shows critical thinking)
-5. `explain.png` — per-alert explanation
+1. `analyze.png` — upload → validation → results (the product in one image)
+2. `overview.png` — headline metrics, precision-vs-recall note, benchmark timeline
+3. `inspect.png` — network map with sensor deviations
+4. `alerts.png` — alert table with the explanation panel
+5. `sensors.png` — impurity vs held-out importance (shows critical thinking)
+6. `research.png` — confusion matrix, curves, baselines
 
 ## Key learning to mention in essays or interviews
 - Rejected an uninformative target ("any leak", true 97.8% of the time) after looking at the data.

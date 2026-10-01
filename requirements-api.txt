@@ -1,0 +1,5 @@
+# Optional HTTP API (api/main.py) for a future React/Next.js frontend.
+-r requirements.txt
+fastapi==0.142.2
+uvicorn==0.54.0
+python-multipart==0.0.32

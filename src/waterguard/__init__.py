@@ -6,4 +6,4 @@ logic in importable, testable functions so the dashboard, experiments and
 tests all use one definition of the pipeline.
 """
 
-__version__ = "2.1.0"
+__version__ = "3.0.0"

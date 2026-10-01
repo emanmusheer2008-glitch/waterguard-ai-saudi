@@ -3,7 +3,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from conftest import needs_models
+from conftest import needs_models, needs_v1
 from waterguard.config import MODELS_DIR, OUTPUTS_DIR, V1_VERIFIED, V2_ALERT_THRESHOLD, V2_VERIFIED
 from waterguard.dashboard_data import load_all, missing_outputs
 from waterguard.evaluation import event_level_summary, point_metrics
@@ -92,7 +92,7 @@ def test_model_artifacts_load_and_predict_probabilities():
     assert prob.shape == (25,) and np.all((prob >= 0) & (prob <= 1))
 
 
-@needs_models
+@needs_v1
 def test_v1_artifacts_load():
     feats = joblib.load(MODELS_DIR / "features_v1.joblib")
     assert len(feats) == 20 and "month" in feats

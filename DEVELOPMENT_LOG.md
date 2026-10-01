@@ -116,3 +116,51 @@ V2 alerts are usually right (94% precision), but it misses most severe 5-minute 
 
 ### 31. Deployment status
 Not deployed yet; you will publish to GitHub later. Everything is prepared for Streamlit Community Cloud (see README §17).
+
+---
+
+## Phase 4 — Productization (1 Oct 2026)
+
+Goal: turn the retrospective dashboard into a usable application: *"give WaterGuard compatible SCADA data and receive ML risk analysis."* No model was retrained or changed.
+
+### 32. One inference service for everything
+- **What:** `src/waterguard/service.py` now holds the whole inference path: `read_table → validate_input → prepare_features → run_inference → explain_alert / generate_inspection_guidance → summarize_results`, plus `evaluate_against_ground_truth` for optional labels. The Streamlit UI (`ui/`) and the new FastAPI app (`api/main.py`) both call it; neither contains model logic.
+- **How verified:** running the service on the full 2018 data reproduces the saved benchmark test probabilities to within 2.2e-16 with identical alerts; its explanations match the pre-computed dashboard file to within that file's rounding.
+- **Supporting files:** `scripts/build_inference_reference.py` writes the input schema, training value ranges, explanation signals and time-of-day pressure baselines (training rows only) to `models/`.
+
+### 33. Decision: commit the V2 model
+- **Why:** Analyze Data and the API cannot work on Streamlit Cloud without the model, which had been git-ignored. The original 25 MB file is under GitHub's 50 MB warning, so it is committed unchanged rather than re-saved (re-saving would change a verified artifact). V1 stays ignored.
+
+### 34. Input format decision: prefixed wide table
+- **Why:** pressure and demand sensors share 3 node IDs (e.g. `n1`), so a flat table needs prefixes (`P_`, `D_`, `F_`, `L_`). The BattLeDIM 4-sheet workbook and four separate per-group files are also accepted and converted to the same table.
+
+### 35. Error: a malformed CSV was read silently
+- **What happened?** A test file whose rows had more fields than the header was expected to fail, but pandas read it without error.
+- **Why?** pandas silently turns surplus leading fields into the row index instead of raising.
+- **How identified?** `test_malformed_csv` failed with "DID NOT RAISE".
+- **Fix:** `_read_csv` now rejects any parse whose index is not a plain row index (`MALFORMED_CSV`).
+- **Lesson:** "it parsed" is not the same as "it parsed correctly"; malformed-input tests catch silent failures.
+
+### 36. Error: BattLeDIM's own 2019 leakage file broke the reader
+- **What happened?** Uploading the official `2019_Leakages.csv` as labels failed with `Expected 5 fields in line 4310, saw 6`.
+- **Why?** The reader tried comma separation first and only fell back to `;` if that produced one column. In this file the first decimal comma appears at line 4310, so the comma parse crashed before the fallback could run. It is the same European format problem as in Phase 1, entry 2, in a new place.
+- **How identified?** Testing the product with real unseen data (the 2019 files), not just synthetic tests.
+- **Fix:** the separator is now chosen from the header line (more `;` than `,` → `sep=";", decimal=","`), and empty trailing columns from a final `;` are dropped. A regression test reproduces the file's structure.
+
+### 37. Real unseen-year check: BattLeDIM 2019
+- The official 92 MB `2019_SCADA.xlsx` was analysed through the upload path. Validation status was ok, 1.4% of readings fell outside the training range (compatible), 105,120 rows were processed, and it took about 97 s (mostly Excel parsing).
+- With `2019_Leakages.csv` as labels: precision 0.9984, recall 0.6775, F1 0.8072, ROC-AUC 0.9715.
+- **Caution:** 2019 total leakage has a median of 75.9 m³/h (2018: 23.9), so **82.1%** of 2019 is "severe" under the 2018-derived 40 m³/h rule. Prevalence inflates precision ("always alert" would score 0.82), so these numbers are *not comparable* with the 2018 benchmark and do not replace it. This is documented as a supplementary product check.
+
+### 38. Interface restructure
+- Seven top-level pages became five sections plus a Data Guide: **Overview, Analyze Data, Risk & Alerts** (monitor + timeline + explainer), **Inspection & Sensors** (guidance + sensor intelligence), **Model & Research** (performance + methodology + context + limitations), **Data Guide**.
+- A data-source switch (*Benchmark demo* / *Your analysis*) on Risk & Alerts and Inspection & Sensors. The uploaded analysis is kept for the session, and benchmark ground truth is never shown against uploaded data.
+- Approved scientific wording moved to `src/waterguard/wording.py`, shared by the UI, the API and the frontend spec.
+
+### 39. API and frontend handoff
+- FastAPI endpoints: `/health`, `/model-info`, `/sample-schema`, `/sample-files/{name}`, `/analyze`, `/analyze-groups`, `/explain`, `/benchmark`, `/benchmark/timeline`, `/benchmark/explain`, `/network`. Stateless, in-memory, 100 MB limit, structured errors, no paths in responses, `defusedxml` for safe XLSX parsing.
+- `docs/API.md` (contract with real example values) and `docs/FRONTEND_SPEC.md` (pages, components, chart data contracts, responsive and accessibility rules, approved wording) prepare a React/Next.js frontend.
+- One warning fixed on the way: FastAPI's test client warned that `httpx` is deprecated; `httpx2` is now the dev dependency.
+
+### 40. Tests
+The suite grew from 45 to 95 tests (service, API, app flows). It runs with deprecation warnings treated as errors.

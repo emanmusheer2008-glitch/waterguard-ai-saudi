@@ -1,6 +1,6 @@
 # Manual acceptance checklist
 
-Run on your own computer (about 20 minutes):
+Run on your own computer (about 30 minutes). In a terminal opened in the project folder:
 
 ```bat
 cd %USERPROFILE%\OneDrive\Desktop\waterguard-ai-saudi
@@ -9,27 +9,46 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 streamlit run app.py
 ```
-
 Expected: pytest ends with `passed` and **0 failed**; the browser opens at http://localhost:8501.
 
+## A. Benchmark demo (the verified evaluation)
 | # | Check | Where | Pass if… |
 |---|---|---|---|
-| 1 | Open Network Overview | first page | KPI cards load: precision 94.2%, recall 38.2%, ROC-AUC 0.950, threshold 0.22 |
-| 2 | Understand the dataset | Overview subtitle, Methodology | "BattLeDIM L-Town benchmark — not Saudi utility data" is visible |
-| 3 | Saudi vs L-Town distinction | Methodology, top two boxes | Blue box = Saudi motivation (MEWA); amber box = benchmark data |
-| 4 | Inspect severe-risk periods | Overview episode table; Risk Monitor table | Two episodes (Oct and Oct–Nov 2018); highest-risk table loads |
-| 5 | Change the time window | Risk Monitor → Date range | Pick 6–23 Oct 2018; cards and chart update |
-| 6 | Understand predicted risk | Risk Monitor / Alert Explainer | Probability, threshold and ALERT/Normal status are shown |
-| 7 | Inspect sensor behaviour | Alert Explainer; Inspection Guidance | Signal table and network map load; the toggle shows a star at the true leak |
-| 8 | Detection timeline | Detection Timeline | Leakage (top) with red alert dots; risk (bottom) with 0.22 line; zoom works |
-| 9 | Model performance | Model Performance | Confusion matrix TN 22,332 · FP 210 · FN 5,561 · TP 3,433 |
-| 10 | Understand precision | Overview amber note | You can say in your own words: "when it alerts, it's right 94% of the time" |
-| 11 | Understand recall | Overview amber note | "It caught 38% of severe 5-minute steps; it missed 5,561" |
-| 12 | Understand threshold 0.22 | Model Performance → Threshold selection chart | The dashed line is at the validation F1 peak; the what-if slider is labelled exploratory |
-| 13 | Understand ≥ 40 | Overview blue note; Methodology | It is called an experimental threshold, not a standard |
-| 14 | Limitations | Methodology | Two test episodes, recall 38%, no localisation, uncalibrated, etc. |
-| 15 | Not pretending to be live | Every page | The badge reads "Retrospective replay · BattLeDIM 2018 benchmark · not live" |
-| 16 | Download works | Risk Monitor → Download alerts | A CSV downloads |
-| 17 | Terminal is clean | the window running Streamlit | No red tracebacks or deprecation warnings while clicking through all 8 pages |
+| 1 | Overview loads | Overview | Precision 94.2%, Recall 38.2%, ROC-AUC 0.950, threshold 0.22; amber data disclaimer visible |
+| 2 | Saudi vs L-Town distinction | Overview disclaimer; Model & Research → Dataset & Saudi context | Saudi = motivation (blue box), BattLeDIM = data (amber box) |
+| 3 | Severe definition | Overview note | "≥ 40 m³/h … experimental threshold … not a standard" |
+| 4 | Precision vs recall | Overview amber note | You can say: "When it alerts it's right 94% of the time, but it caught only 38% of severe steps." |
+| 5 | Risk & Alerts (benchmark) | Risk & Alerts, source = Benchmark demo | Pick 6–23 Oct 2018; cards and chart update; click an alert row → explanation appears |
+| 6 | Exploratory threshold | Risk & Alerts slider | Moving it shows the "exploratory" note; 0.22 is described as the real threshold |
+| 7 | Detection timeline | Risk & Alerts → Detection timeline | Leakage (top) with red alert dots and 40 m³/h line; risk (bottom) with 0.22 line |
+| 8 | Inspection guidance | Inspection & Sensors | Network map loads; "Any timestamp" on 10 Oct 2018 → toggle shows a star at the true leak |
+| 9 | Sensor intelligence | Inspection & Sensors → Sensor intelligence | Two importance views; the n215 explanation is shown |
+| 10 | Model & Research | all 5 tabs | Confusion matrix TN 22,332 · FP 210 · FN 5,561 · TP 3,433; limitations and disclaimer present |
+| 11 | Not live | page headers | Benchmark pages show "Retrospective replay … Not live monitoring." |
+
+## B. Analyze Data (your own data)
+| # | Check | Pass if… |
+|---|---|---|
+| 12 | Sample file | Analyze Data → **Use the sample file** → validation shows *Ready to analyse*, 1,152 observations, 04 Oct 2026 – 07 Oct 2026, 5 min, Compatible |
+| 13 | Run | **Run analysis** → 258 alerts, highest risk 0.753 on 06 Oct 2026 18:40, 6 reduced-context rows |
+| 14 | No labels needed | The ground-truth card says "no labels for this data"; nothing asks for labels |
+| 15 | Alert explanation | Click an alert row → sensitivity chart, signal table and inspection ranking appear |
+| 16 | Export | **Predictions (CSV)** downloads with columns Timestamp, risk_probability, alert, reduced_context, imputed_values |
+| 17 | Session carries over | Risk & Alerts and Inspection & Sensors open on **Your analysis** without re-uploading; the header pill names the sample file |
+| 18 | Optional labels | Expand "Optional: ground-truth labels" → tick "Use the sample labels" → Run analysis → "Evaluation against your labels" cards appear, labelled evaluation only |
+| 19 | Bad file | Upload any unrelated CSV (e.g. a spreadsheet export) → red/clear validation errors (e.g. missing Timestamp or missing sensor columns); Run analysis is disabled |
+| 20 | Template | Download **Blank template** → it opens in Excel with Timestamp + 119 columns |
+| 21 | Separate files | (optional) Input format → *Separate files per sensor group* → four upload boxes appear |
+| 22 | Data Guide | Data Guide page explains formats, validation rules and output columns |
+| 23 | Clean terminal | No red tracebacks or deprecation warnings in the Streamlit window while clicking through everything |
+
+## C. API (optional)
+```bat
+uvicorn api.main:app --port 8000
+```
+| # | Check | Pass if… |
+|---|---|---|
+| 24 | Health | http://localhost:8000/health → `{"status":"ok","model_loaded":true,...}` |
+| 25 | Docs | http://localhost:8000/docs → interactive page; try **POST /analyze** with `samples/waterguard_sample_ltown2018_shifted_to_2026.csv` → `"n_alerts": 258` |
 
 If anything fails, copy the error text and bring it back to Claude.

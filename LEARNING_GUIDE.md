@@ -108,7 +108,7 @@ In WaterGuard they disagree: `P_n215` is #1 by impurity but #54 of 60 by test pe
 
 ---
 
-## Part E — 31 interview questions and answers
+## Part E — Interview questions and answers (31 here, 7 more in Part F)
 
 1. **What problem does WaterGuard solve?**
    It flags periods when a water network's sensor patterns look like severe water loss, and suggests which pressure sensors to inspect first, so a human can prioritise. It is a decision-support prototype.
@@ -198,7 +198,48 @@ In WaterGuard they disagree: `P_n215` is #1 by impurity but #54 of 60 by test pe
     Evaluate on BattLeDIM 2019 (an independent year); add alert logic that stays on for a whole episode (persistence/hysteresis) and measure event-level recall; use walk-forward validation; calibrate probabilities; try model-based localisation with the network model.
 
 30. **How do you know your results are reproducible?**
-    Retraining from raw data reproduces the saved probabilities to within 3e-16 and gives the same confusion matrix. Re-running the experiments produced byte-identical files, and 45 automated tests check the verified numbers and the pipeline.
+    Retraining from raw data reproduces the saved probabilities to within 3e-16 and gives the same confusion matrix. Re-running the experiments produced byte-identical files, and 95 automated tests check the verified numbers, the pipeline, the API and the app.
 
 31. **What did you learn most?**
     That a good metric can hide a useless system (V1), that framing the target matters as much as the model, that importance plots can mislead (n215), and that honest evaluation means reporting what doesn't work.
+
+---
+
+## Part F — The product side (Analyze Data, API, frontend)
+
+**Training vs inference.** *Training* means learning from labelled history; it happened once, offline, in `src/train_v2.py`, and produced four saved artifacts: the Random Forest, the median imputer, the ordered list of 60 features and the 0.22 threshold. *Inference* means applying those saved artifacts to new data. When someone uploads a file, WaterGuard does inference only: no labels, no retraining, the same feature code. We proved the inference path is identical: run on the 2018 data, it reproduces the benchmark test probabilities to within 2.2e-16.
+
+**Benchmark demo vs your analysis.** The *benchmark demo* is the verified 2018 evaluation, where ground truth exists, so you can see hits and misses. *Your analysis* is an uploaded file; there is usually no ground truth, so the app shows only model output (unless you upload labels separately, for evaluation only). The two are never mixed on screen.
+
+**2018 vs 2026 timestamps.** The model has no calendar feature, so the year doesn't matter. The sample file is real 2018 L-Town data with every timestamp moved to 2026, and from the 7th row it produces exactly the same risk as the benchmark. The first 6 rows (30 minutes) are flagged *reduced context* because the 30-minute change features need history.
+
+**Domain shift (network compatibility).** A model learns the "normal" of one network: its sensors, pipes, pressures and daily patterns. A different network, for example a Saudi city's, has different sensors and different normal values, so the L-Town model's rules don't transfer. That is why the upload validator requires the exact L-Town sensor columns and checks whether values fall within the training range. Recent data from another network is *not* compatible just because it is recent. A new network needs its own labelled history, retraining, chronological validation and its own threshold.
+
+**Validation of inputs.** Before any prediction, the file is checked: timestamp column, all 119 sensors, 5-minute sampling, duplicates, gaps, missing values, value ranges. Problems are reported with clear codes (e.g. `MISSING_COLUMNS`, `INVALID_SAMPLING`) instead of silently producing wrong numbers.
+
+**Service layer and API.** All ML logic lives in one Python module (`service.py`). The Streamlit app and the FastAPI API both call it, so there is one source of truth. An API lets any other program (e.g. a future React/Next.js website) send a file over HTTP and get JSON back. The frontend never re-implements the model in JavaScript.
+
+**Real unseen-year check.** The official BattLeDIM 2019 workbook was uploaded through the same pipeline. It validated as compatible and was analysed in about 1.5 minutes. With 2019 labels, precision was 0.998 and recall 0.678, *but* 2019 has far more leakage: 82% of it counts as severe under the 2018-based 40 m³/h rule, so even "always alert" would score 82% precision. Lesson: a threshold defined from one period's distribution can lose meaning in another, so always check prevalence before quoting metrics.
+
+### More interview questions
+
+32. **Can I upload new data and get predictions?**
+    Yes, if it is L-Town-compatible SCADA at 5-minute steps. WaterGuard validates it, builds the same 60 features, applies the saved model and threshold, and returns risk, alerts, explanations, inspection guidance and a CSV. No labels needed, no retraining.
+
+33. **Does it work on 2026 data?**
+    Yes for L-Town data: no calendar feature is used, and shifted data gives identical predictions. But a 2026 file from a *different* network is not valid input.
+
+34. **Could a Saudi utility upload its SCADA data?**
+    Not into this model. Its sensors and hydraulics differ. It would need its own historical data, verified leak records, retraining, chronological validation and threshold selection. The validator rejects a different sensor layout and flags out-of-range values.
+
+35. **How do you make sure uploaded ground truth can't leak into predictions?**
+    Only the 119 schema columns survive validation; label-like columns are removed and reported. Labels can only arrive as a separate file, which is joined to predictions after inference. A test adds fake label columns and checks that predictions are unchanged.
+
+36. **Why separate the service layer from Streamlit?**
+    So the same tested code serves the app and the API, and a future web frontend can replace Streamlit without touching the ML. Duplicated model logic would eventually drift apart.
+
+37. **What did testing on 2019 data teach you?**
+    The pipeline handles a real, unseen, full-year file. It also showed that metrics depend on prevalence: with 82% of 2019 labelled severe, 99.8% precision is far less impressive than it sounds.
+
+38. **What happens if a file has gaps or missing values?**
+    Gaps are reported and no prediction is made for missing steps; change features next to a gap are filled from training medians and flagged *reduced context*. Missing readings are imputed with training medians and flagged *imputed*, so the user knows which predictions are lower confidence.

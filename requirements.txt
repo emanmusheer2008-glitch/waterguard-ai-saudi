@@ -1,4 +1,4 @@
-# Versions verified together on Python 3.13 (see PROJECT_REPORT.md).
+# Runtime for the Streamlit app and the inference service. Verified together on Python 3.13.
 streamlit==1.64.0
 pandas==3.0.6
 numpy==2.5.3
@@ -6,3 +6,4 @@ plotly==7.1.0
 scikit-learn==1.9.1
 joblib==1.6.0
 openpyxl==3.1.5
+defusedxml==0.7.1   # makes openpyxl parse uploaded .xlsx files safely (XML bomb protection)

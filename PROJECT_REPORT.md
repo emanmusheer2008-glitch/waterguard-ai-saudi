@@ -1,6 +1,6 @@
 # WaterGuard AI Saudi: Detecting Severe Water-Loss Periods from Hydraulic SCADA Data on the BattLeDIM L-Town Benchmark
 
-**Author:** Eman Musheer · **Type:** independent educational research prototype · **Version:** October 2026
+**Author:** Eman Musheer · **Type:** independent educational research prototype · **Version:** October 2026 (v3.0 — inference application)
 
 ---
 
@@ -73,7 +73,7 @@ Precision 0.9424 · Recall 0.3817 · F1 0.5433 · ROC-AUC 0.9501 · PR-AUC 0.880
 - **Inspection guidance.** A model-independent heuristic ranks pressure sensors by time-of-day-adjusted drop relative to normal training periods (spread floored at 0.05 m). Averaged over each test episode, the sensor nearest the true leaking pipe ranked 1st (p158 → n644) and 2nd (p369 → n429) of 33. With two episodes and map (not hydraulic) distance, this is preliminary support for using pressure deviations to prioritise inspection. It is not a localisation result.
 
 ## 10. Dashboard
-An 8-page Streamlit application presents a *retrospective replay* of the test period: overview KPIs, a risk monitor with an exploratory threshold, per-alert explanation, inspection guidance on the network map, a detection timeline, sensor intelligence (both importance views), model performance (confusion matrix, ROC/PR, threshold curve, baselines, V1 vs V2, sensitivity) and methodology. It loads only pre-computed outputs (≈ 0.7 s), never retrains, and labels ground truth as "evaluation only" throughout.
+The Streamlit application has six sections: Overview; Analyze Data (upload, validation, inference, explanation, export); Risk & Alerts (monitor, detection timeline, per-alert explanation); Inspection & Sensors (network-map guidance, impurity vs permutation importance, signal explorer); Model & Research (performance, methodology, context, limitations); and Data Guide. A data-source switch separates the *benchmark demo* (retrospective replay of the test period, with ground truth labelled "evaluation only") from *your analysis* (uploaded data, no ground truth unless supplied separately). The app never retrains.
 
 ## 11. Limitations
 1. Simulated network, one year, two severe test episodes (five in the year).
@@ -89,6 +89,14 @@ WaterGuard AI Saudi is an independent educational research prototype and is not 
 
 ## 13. Future work
 Evaluation on BattLeDIM 2019; persistence/hysteresis alerting with event-level metrics; walk-forward validation; calibration on validation; model-based localisation using the hydraulic model; and, under a data-sharing agreement, evaluation on real utility data. A future operational architecture might be: SCADA stream → real-time validation and features → model → risk score → operator dashboard → field inspection → feedback labels. That architecture does not exist in this project.
+
+## 13b. From evaluation to application
+The trained model was packaged as an inference application **without retraining**. A single service layer validates uploaded SCADA data, rebuilds the 60 features with the training code, applies the saved imputer, Random Forest and 0.22 threshold, and returns risk probabilities, alerts, local explanations and inspection guidance. A Streamlit interface and a FastAPI API both use this layer.
+
+- **Equivalence.** On the 2018 data the service reproduces the benchmark test probabilities to within 2.2e-16 with identical alerts, so the application and the evaluated model are the same function.
+- **Calendar independence.** No calendar feature is used. L-Town data with timestamps shifted to 2026 yields identical probabilities after a 30-minute warm-up (the change features need history; those rows are flagged).
+- **Domain shift.** Compatibility is defined by the network, not the date. Inputs must match the L-Town sensor schema, and the validator reports the share of readings outside the training range. Data from a physically different network would require network-specific labelled history, retraining, chronological validation and threshold selection.
+- **Supplementary unseen-year check.** The official BattLeDIM 2019 workbook passed validation (1.4% of readings outside the training range) and was analysed end to end. Against the 2019 labels: precision 0.998, recall 0.678, F1 0.807, ROC-AUC 0.972. Total leakage in 2019 is much higher (median 75.9 vs 23.9 m³/h), so 82.1% of steps exceed the 2018-derived 40 m³/h threshold. At this prevalence, precision is uninformative ("always alert" scores 0.82). The figures show the pipeline works on a real unseen year; they are not comparable with, and do not replace, the 2018 benchmark. They also show that a severity threshold defined from one period's distribution need not transfer.
 
 ## 14. Conclusion
 On a public benchmark and under a leakage-safe chronological evaluation, a Random Forest on engineered hydraulic features identified severe water-loss periods with high precision and strong ranking, but limited recall. The main contributions are methodological rather than numerical: rejecting an uninformative target, exposing a weak baseline's misleading AUC, validation-only threshold selection, transparent reporting of failure modes, and a decision-support interface that separates model output from ground truth.

@@ -7,12 +7,14 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT))
 
 from waterguard.config import LEAKAGE_FILE, MODELS_DIR, SCADA_FILE  # noqa: E402
 
 needs_leakage = pytest.mark.skipif(not LEAKAGE_FILE.exists(), reason="data/2018_Leakages.csv not present (see README: Data setup)")
 needs_scada = pytest.mark.skipif(not SCADA_FILE.exists(), reason="data/2018_SCADA.xlsx not present (see README: Data setup)")
 needs_inp = pytest.mark.skipif(not (SCADA_FILE.parent / "L-TOWN.inp").exists(), reason="data/L-TOWN.inp not present (python scripts/download_data.py)")
+needs_v1 = pytest.mark.skipif(not (MODELS_DIR / "waterguard_rf_v1.joblib").exists(), reason="V1 baseline not present (run src/train_v1.py)")
 needs_models = pytest.mark.skipif(not (MODELS_DIR / "waterguard_rf_v2.joblib").exists(), reason="model artifacts not present (run src/train_v2.py)")
 
 

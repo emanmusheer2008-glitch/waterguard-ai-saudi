@@ -16,8 +16,9 @@ data/*.inp
 data/*.part
 data/cache/
 
-# Trained model binaries (~25 MB each) - regenerate with src/train_v1.py / src/train_v2.py
-models/*.joblib
+# Model binaries: the V2 artifacts ARE committed (Analyze Data and the API need them; 25 MB).
+# V1 is only a historical baseline - regenerate with src/train_v1.py.
+models/*_v1.joblib
 
 # OS / editor / secrets
 .DS_Store
