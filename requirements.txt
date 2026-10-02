@@ -7,3 +7,7 @@ scikit-learn==1.9.1
 joblib==1.6.0
 openpyxl==3.1.5
 defusedxml==0.7.1   # makes openpyxl parse uploaded .xlsx files safely (XML bomb protection)
+
+fastapi==0.142.2
+uvicorn==0.54.0
+python-multipart==0.0.32
