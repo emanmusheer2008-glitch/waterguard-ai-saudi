@@ -41,9 +41,11 @@ app = FastAPI(
     description="ML water-loss decision-support research prototype. Model trained and evaluated on the BattLeDIM "
                 "L-Town benchmark (simulated network); not Saudi utility data; not live monitoring.",
 )
+# Allowed browser origins, comma-separated (e.g. "https://my-frontend.example"). Unset or "*" allows any
+# origin; this API uses no cookies or credentials, so that is safe for a public demo. Restrict it in production.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in os.environ.get("WATERGUARD_CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
+    allow_origins=[o.strip() for o in os.environ.get("WATERGUARD_CORS_ORIGINS", "*").split(",") if o.strip()] or ["*"],
     allow_methods=["GET", "POST"], allow_headers=["*"],
 )
 

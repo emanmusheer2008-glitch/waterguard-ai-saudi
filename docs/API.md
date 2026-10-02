@@ -8,7 +8,9 @@ uvicorn api.main:app --port 8000          # from the project root
 # interactive docs: http://localhost:8000/docs   ·   OpenAPI schema: http://localhost:8000/openapi.json
 ```
 
-Environment variable `WATERGUARD_CORS_ORIGINS` (comma-separated; default `http://localhost:3000`) controls which browser origins may call the API.
+Environment variable `WATERGUARD_CORS_ORIGINS` (comma-separated origins; default `*` = any origin, acceptable because the API uses no cookies or credentials) controls which browser origins may call the API. Set it to your frontend URL(s) once they are known.
+
+**Railway:** `railway.json` sets the start command `/bin/sh -c "exec python -m uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"` and the health check `/health`; dependencies come from `requirements.txt`.
 
 ## Architecture
 
