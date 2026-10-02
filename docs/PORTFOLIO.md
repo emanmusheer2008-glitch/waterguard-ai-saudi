@@ -8,6 +8,9 @@ Everything below is supported by executed results in this repository. Do not rou
 ## One-line description
 A Saudi-motivated machine-learning prototype that flags severe water-loss periods from hydraulic SCADA data and suggests which sensors to inspect first, evaluated on the international BattLeDIM L-Town benchmark.
 
+## One-sentence summary
+Built WaterGuard AI Saudi, an ML-based water-loss decision-support research prototype using hydraulic SCADA time series, 60 engineered features, Random Forest classification, explainable alerts and sensor inspection guidance; achieved 0.950 ROC-AUC and 0.942 precision on a held-out BattLeDIM L-Town benchmark test period.
+
 ## CV — exactly two bullets
 - Built a Random Forest decision-support prototype that flags severe water-loss periods from 60 engineered hydraulic SCADA features (BattLeDIM L-Town benchmark, 105,120 five-minute records); on an untouched later test period it reached 94% alert precision and ROC-AUC 0.95, with recall of 38% reported openly.
 - Designed a leakage-safe chronological evaluation with validation-only threshold tuning and four baselines, then packaged the model as an application: a validated upload-and-analyse workflow (Streamlit) and a FastAPI inference API sharing one tested service layer, with per-alert explanations, sensor inspection guidance and CSV export.
@@ -34,15 +37,18 @@ Suggested topics: `machine-learning` `water` `leak-detection` `scada` `time-seri
 
 **Limitations (show them).** Simulated network; one year; two severe test episodes; recall 38%; experimental severity threshold; no true leak localisation.
 
-**Links.** GitHub: _add after publishing_ · Live demo: _add after deploying_
+**Links.** Live demo: https://waterguard-ai-produc-qien.bolt.host · API docs: https://waterguard-ai-saudi-production.up.railway.app/docs · GitHub: https://github.com/emanmusheer2008-glitch/waterguard-ai-saudi
 
-## Recommended screenshots (in `docs/screenshots/`)
-1. `analyze.png` — upload → validation → results (the product in one image)
-2. `overview.png` — headline metrics, precision-vs-recall note, benchmark timeline
-3. `inspect.png` — network map with sensor deviations
-4. `alerts.png` — alert table with the explanation panel
-5. `sensors.png` — impurity vs held-out importance (shows critical thinking)
-6. `research.png` — confusion matrix, curves, baselines
+## Screenshots (in `docs/screenshots/`)
+| File | Source | Shows |
+|---|---|---|
+| `01-overview-web.png` | Public web frontend | Hero: benchmark overview and verified metrics |
+| `02-analyze-data-streamlit.png` | Streamlit | Validation → inference → timeline → alert periods (sample file) |
+| `03-risk-alerts-streamlit.png` | Streamlit | Risk monitor, alert table and per-alert explanation |
+| `04-inspection-sensors-streamlit.png` | Streamlit | Inspection guidance on the L-Town network map |
+| `04b-sensor-intelligence-streamlit.png` | Streamlit | Impurity vs held-out permutation importance |
+| `05-model-research-web.png` | Public web frontend | Metrics, confusion matrix, curves, threshold validation |
+| `06-data-guide-streamlit.png` | Streamlit | Input schema and validation rules |
 
 ## Key learning to mention in essays or interviews
 - Rejected an uninformative target ("any leak", true 97.8% of the time) after looking at the data.
